@@ -1,6 +1,8 @@
-# 采集出来的数据：里面是各仓的提交记录、成员与本地文件路径，只留在本机
+# 采集出来的数据（旧版）
 data.js
 # 本机配置（仓库放在哪、谁是谁）
 config.json
 aliases.json
+# GitHub 账号与头像的缓存
+.cache/
 node_modules/

@@ -1,0 +1,262 @@
+// 通用小工具：转义、时间、数字、图标、头像、提示框、弹出选择。
+
+export const $ = (s, el = document) => el.querySelector(s);
+export const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+export const nowSec = () => Math.floor(Date.now() / 1000);
+export const DAY = 86400;
+
+/* ---------- 时间 ---------- */
+export function ago(t) {
+  if (!t) return '—';
+  const s = nowSec() - t;
+  if (s < 60) return '刚刚';
+  if (s < 3600) return Math.round(s / 60) + ' 分钟前';
+  if (s < DAY) return Math.round(s / 3600) + ' 小时前';
+  if (s < 30 * DAY) return Math.round(s / DAY) + ' 天前';
+  return day(t);
+}
+export function day(t) {
+  const d = new Date(t * 1000);
+  const y = d.getFullYear() === new Date().getFullYear() ? '' : d.getFullYear() + '年';
+  return `${y}${d.getMonth() + 1}月${d.getDate()}日`;
+}
+export function stamp(t) {
+  if (!t) return '—';
+  const d = new Date(t * 1000);
+  return `${day(t)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+export function fullStamp(t) {
+  const d = new Date(t * 1000);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+/** 列表里的日期：一周内说「x 天前」，更早说日期。 */
+export function when(t) {
+  return nowSec() - t < 7 * DAY ? ago(t) : stamp(t);
+}
+/** 本地时区的「那一天」0 点（秒）。 */
+export function dayStart(t) {
+  const d = new Date(t * 1000);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime() / 1000;
+}
+/** 那一周的周一 0 点（秒）。 */
+export function weekStart(t) {
+  const d = new Date(t * 1000);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d.getTime() / 1000;
+}
+
+/* ---------- 数字 ---------- */
+export const num = (n) => (n ?? 0).toLocaleString('en-US');
+export function compact(n) {
+  const a = Math.abs(n);
+  if (a >= 1e6) return (n / 1e6).toFixed(a >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'M';
+  if (a >= 1e4) return (n / 1e3).toFixed(a >= 1e5 ? 0 : 1).replace(/\.0$/, '') + 'K';
+  return num(n);
+}
+export function aheadBehind(ahead, behind, { title = '' } = {}) {
+  const a = ahead ? `<span class="up">↑${ahead}</span>` : '<span class="zero">↑0</span>';
+  const b = behind ? `<span class="down">↓${behind}</span>` : '<span class="zero">↓0</span>';
+  return `<span class="ab" title="${esc(title)}">${a} ${b}</span>`;
+}
+export function lineStat(add, del) {
+  if (add == null && del == null) return '';
+  return `<span class="lines">${add ? `<span class="a">+${num(add)}</span>` : ''}${add && del ? ' ' : ''}${del ? `<span class="d">−${num(del)}</span>` : ''}${!add && !del ? '<span class="faint">0</span>' : ''}</span>`;
+}
+/** GitHub 风格的 5 格增删条。 */
+export function bar5(add, del) {
+  const t = (add ?? 0) + (del ?? 0);
+  if (!t) return '<span class="bar2"><i></i><i></i><i></i><i></i><i></i></span>';
+  const a = Math.round((add / t) * 5);
+  const cells = [];
+  for (let i = 0; i < 5; i++) cells.push(`<i class="${i < a ? 'a' : 'd'}"></i>`);
+  return `<span class="bar2">${cells.join('')}</span>`;
+}
+
+/* ---------- 图标（16px 线框，GitHub Octicons 风格） ---------- */
+const svg = (d, s = 14) => `<svg width="${s}" height="${s}" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">${d}</svg>`;
+export const icon = {
+  branch: (s) => svg('<path d="M9.5 3.25a2.25 2.25 0 1 1 3 2.122V6A2.5 2.5 0 0 1 10 8.5H6a1 1 0 0 0-1 1v1.128a2.251 2.251 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.5 0v1.836A2.5 2.5 0 0 1 6 7h4a1 1 0 0 0 1-1v-.628A2.25 2.25 0 0 1 9.5 3.25Zm-6 0a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Zm8.25-.75a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5ZM4.25 12a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Z"/>', s),
+  commit: (s) => svg('<path d="M11.93 8.5a4.002 4.002 0 0 1-7.86 0H.75a.75.75 0 0 1 0-1.5h3.32a4.002 4.002 0 0 1 7.86 0h3.32a.75.75 0 0 1 0 1.5Zm-1.43-.75a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z"/>', s),
+  merge: (s) => svg('<path d="M5.45 5.154A4.25 4.25 0 0 0 9.25 7.5h1.378a2.251 2.251 0 1 1 0 1.5H9.25A5.734 5.734 0 0 1 5 7.123v3.505a2.25 2.25 0 1 1-1.5 0V5.372a2.25 2.25 0 1 1 1.95-.218ZM4.25 13.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm8.5-4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5ZM5 3.25a.75.75 0 1 0 0 .005V3.25Z"/>', s),
+  tag: (s) => svg('<path d="M1 7.775V2.75C1 1.784 1.784 1 2.75 1h5.025c.464 0 .91.184 1.238.513l6.25 6.25a1.75 1.75 0 0 1 0 2.474l-5.026 5.026a1.75 1.75 0 0 1-2.474 0l-6.25-6.25A1.752 1.752 0 0 1 1 7.775Zm1.5 0c0 .066.026.13.073.177l6.25 6.25a.25.25 0 0 0 .354 0l5.025-5.025a.25.25 0 0 0 0-.354l-6.25-6.25a.25.25 0 0 0-.177-.073H2.75a.25.25 0 0 0-.25.25ZM6 5a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z"/>', s),
+  cloud: (s) => svg('<path d="M2 9.5A3.5 3.5 0 0 1 5.5 6h.1a4.5 4.5 0 0 1 8.4 2.2A2.75 2.75 0 0 1 13.25 14H5.5A3.5 3.5 0 0 1 2 10.5Zm3.5-2a2 2 0 0 0 0 5h7.75a1.25 1.25 0 0 0 .25-2.475.75.75 0 0 1-.6-.735V9a3 3 0 0 0-5.84-.99.75.75 0 0 1-.71.49Z"/>', s),
+  folder: (s) => svg('<path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z"/>', s),
+  file: (s) => svg('<path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Zm6.75.062V4.25c0 .138.112.25.25.25h2.688l-.011-.013-2.914-2.914-.013-.011Z"/>', s),
+  graph: (s) => svg('<path d="M1.5 1.75V13.5h13.75a.75.75 0 0 1 0 1.5H.75a.75.75 0 0 1-.75-.75V1.75a.75.75 0 0 1 1.5 0Zm14.28 2.53-5.25 5.25a.75.75 0 0 1-1.06 0L7 7.06 4.28 9.78a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042l3.25-3.25a.75.75 0 0 1 1.06 0L10 7.94l4.72-4.72a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042Z"/>', s),
+  home: (s) => svg('<path d="M6.906.664a1.749 1.749 0 0 1 2.187 0l5.25 4.2c.415.332.657.835.657 1.367v7.019A1.75 1.75 0 0 1 13.25 15h-3.5a.75.75 0 0 1-.75-.75V9H7v5.25a.75.75 0 0 1-.75.75h-3.5A1.75 1.75 0 0 1 1 13.25V6.23c0-.531.242-1.034.657-1.366l5.25-4.2Zm1.25 1.171a.25.25 0 0 0-.312 0l-5.25 4.2a.25.25 0 0 0-.094.196v7.019c0 .138.112.25.25.25H5.5V8.25a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 .75.75v5.25h2.75a.25.25 0 0 0 .25-.25V6.23a.25.25 0 0 0-.094-.195Z"/>', s),
+  people: (s) => svg('<path d="M2 5.5a3.5 3.5 0 1 1 5.898 2.549 5.508 5.508 0 0 1 3.034 4.084.75.75 0 1 1-1.482.235 4 4 0 0 0-7.9 0 .75.75 0 0 1-1.482-.236A5.507 5.507 0 0 1 3.102 8.05 3.493 3.493 0 0 1 2 5.5ZM11 4a3.001 3.001 0 0 1 2.22 5.018 5.01 5.01 0 0 1 2.56 3.012.749.749 0 0 1-.885.954.752.752 0 0 1-.549-.514 3.507 3.507 0 0 0-2.522-2.372.75.75 0 0 1-.574-.73v-.352a.75.75 0 0 1 .416-.672A1.5 1.5 0 0 0 11 5.5.75.75 0 0 1 11 4Zm-5.5-.5a2 2 0 1 0-.001 3.999A2 2 0 0 0 5.5 3.5Z"/>', s),
+  pulse: (s) => svg('<path d="M6 2c.306 0 .582.187.696.471L10 10.731l1.304-3.26A.751.751 0 0 1 12 7h3.25a.75.75 0 0 1 0 1.5h-2.742l-1.812 4.528a.751.751 0 0 1-1.392 0L6 4.77 4.696 8.03A.75.75 0 0 1 4 8.5H.75a.75.75 0 0 1 0-1.5h2.742l1.812-4.529A.751.751 0 0 1 6 2Z"/>', s),
+  eye: (s) => svg('<path d="M8 2c1.981 0 3.671.992 4.933 2.078 1.27 1.091 2.187 2.345 2.637 3.023a1.62 1.62 0 0 1 0 1.798c-.45.678-1.367 1.932-2.637 3.023C11.67 13.008 9.981 14 8 14c-1.981 0-3.671-.992-4.933-2.078C1.797 10.83.88 9.576.43 8.898a1.62 1.62 0 0 1 0-1.798c.45-.677 1.367-1.931 2.637-3.022C4.33 2.992 6.019 2 8 2ZM1.679 7.932a.12.12 0 0 0 0 .136c.411.622 1.241 1.75 2.366 2.717C5.176 11.758 6.527 12.5 8 12.5c1.473 0 2.825-.742 3.955-1.715 1.124-.967 1.954-2.096 2.366-2.717a.12.12 0 0 0 0-.136c-.412-.621-1.242-1.75-2.366-2.717C10.824 4.242 9.473 3.5 8 3.5c-1.473 0-2.825.742-3.955 1.715-1.124.967-1.954 2.096-2.366 2.717ZM8 10a2 2 0 1 1-.001-3.999A2 2 0 0 1 8 10Z"/>', s),
+  search: (s) => svg('<path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"/>', s),
+  sync: (s) => svg('<path d="M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z"/>', s),
+  close: (s) => svg('<path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.749.749 0 0 1 1.275.326.749.749 0 0 1-.215.734L9.06 8l3.22 3.22a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215L8 9.06l-3.22 3.22a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/>', s),
+  chevronDown: (s) => svg('<path d="M12.78 5.22a.749.749 0 0 1 0 1.06l-4.25 4.25a.749.749 0 0 1-1.06 0L3.22 6.28a.749.749 0 1 1 1.06-1.06L8 8.939l3.72-3.719a.749.749 0 0 1 1.06 0Z"/>', s),
+  chevronRight: (s) => svg('<path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"/>', s),
+  arrowLeft: (s) => svg('<path d="M7.78 12.53a.75.75 0 0 1-1.06 0L2.47 8.28a.75.75 0 0 1 0-1.06l4.25-4.25a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042L4.81 7h7.44a.75.75 0 0 1 0 1.5H4.81l2.97 2.97a.75.75 0 0 1 0 1.06Z"/>', s),
+  arrowSwap: (s) => svg('<path d="M5.22 14.78a.75.75 0 0 0 1.06-1.06L4.56 12h8.69a.75.75 0 0 0 0-1.5H4.56l1.72-1.72a.75.75 0 0 0-1.06-1.06l-3 3a.75.75 0 0 0 0 1.06l3 3Zm5.56-6.5a.75.75 0 1 1-1.06-1.06l1.72-1.72H2.75a.75.75 0 0 1 0-1.5h8.69L9.72 2.28a.75.75 0 0 1 1.06-1.06l3 3a.75.75 0 0 1 0 1.06l-3 3Z"/>', s),
+  copy: (s) => svg('<path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/>', s),
+  ext: (s) => svg('<path d="M3.75 2h3.5a.75.75 0 0 1 0 1.5h-3.5a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h8.5a.25.25 0 0 0 .25-.25v-3.5a.75.75 0 0 1 1.5 0v3.5A1.75 1.75 0 0 1 12.25 14h-8.5A1.75 1.75 0 0 1 2 12.25v-8.5C2 2.784 2.784 2 3.75 2Zm6.854-1h4.146a.25.25 0 0 1 .25.25v4.146a.25.25 0 0 1-.427.177L13.03 4.03 9.28 7.78a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042l3.75-3.75-1.543-1.543A.25.25 0 0 1 10.604 1Z"/>', s),
+  sun: (s) => svg('<path d="M8 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8Zm0-1.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Zm5.657-8.157a.75.75 0 0 1 0 1.061l-1.061 1.06a.749.749 0 0 1-1.275-.326.749.749 0 0 1 .215-.734l1.06-1.06a.75.75 0 0 1 1.06 0Zm-9.193 9.193a.75.75 0 0 1 0 1.06l-1.06 1.061a.75.75 0 1 1-1.061-1.06l1.06-1.061a.75.75 0 0 1 1.061 0ZM8 0a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V.75A.75.75 0 0 1 8 0ZM3 8a.75.75 0 0 1-.75.75H.75a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 3 8Zm13 0a.75.75 0 0 1-.75.75h-1.5a.75.75 0 0 1 0-1.5h1.5A.75.75 0 0 1 16 8Zm-8 5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 8 13Zm3.536-1.464a.75.75 0 0 1 1.06 0l1.061 1.06a.75.75 0 0 1-1.06 1.061l-1.061-1.06a.75.75 0 0 1 0-1.061ZM2.343 2.343a.75.75 0 0 1 1.061 0l1.06 1.061a.751.751 0 0 1-.018 1.042.751.751 0 0 1-1.042.018l-1.06-1.06a.75.75 0 0 1 0-1.06Z"/>', s),
+  moon: (s) => svg('<path d="M9.598 1.591a.749.749 0 0 1 .785-.175 7.001 7.001 0 1 1-8.967 8.967.75.75 0 0 1 .961-.96 5.5 5.5 0 0 0 7.046-7.046.75.75 0 0 1 .175-.786Zm1.616 1.945a7 7 0 0 1-7.678 7.678 5.499 5.499 0 1 0 7.678-7.678Z"/>', s),
+  alert: (s) => svg('<path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z"/>', s),
+  check: (s) => svg('<path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/>', s),
+  pencil: (s) => svg('<path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z"/>', s),
+  logo: (s) => `<svg width="${s || 20}" height="${s || 20}" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="5" cy="4" r="2.4" fill="currentColor"/><circle cx="5" cy="16" r="2.4" fill="currentColor"/><circle cx="15" cy="7.5" r="2.4" fill="var(--s2)"/><path d="M5 6.5v7M15 10c0 3-4 3.6-10 3.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>`,
+};
+
+/* ---------- 头像 ---------- */
+export function avatar(p, size = 20, extraTitle = '') {
+  const name = p?.name ?? '?';
+  const initial = esc([...name.trim()][0]?.toUpperCase() ?? '?');
+  const img = p?.avatar ? `<img src="${esc(p.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : '';
+  const bg = p?.color ? `background:${p.color}` : '';
+  return `<span class="av s${size}" style="${bg}" data-tip="${esc(name + (extraTitle ? ' · ' + extraTitle : ''))}">${initial}${img}</span>`;
+}
+export function who(p, size = 18) {
+  return `<span class="who">${avatar(p, size)}<span class="ell">${esc(p?.name ?? '?')}</span></span>`;
+}
+
+/* ---------- 提示框：任何带 data-tip 的元素悬停显示 ---------- */
+const tip = () => document.getElementById('tip');
+let tipOwner = null;
+export function showTip(x, y, html) {
+  const el = tip();
+  el.innerHTML = html;
+  el.hidden = false;
+  const w = el.offsetWidth;
+  const h = el.offsetHeight;
+  el.style.left = Math.max(8, Math.min(x + 14, innerWidth - w - 8)) + 'px';
+  el.style.top = (y + 18 + h > innerHeight - 8 ? y - h - 12 : y + 18) + 'px';
+}
+export function hideTip() {
+  tip().hidden = true;
+  tipOwner = null;
+}
+document.addEventListener('mousemove', (e) => {
+  const t = e.target.closest?.('[data-tip]');
+  if (t) {
+    tipOwner = t;
+    showTip(e.clientX, e.clientY, t.dataset.tipHtml ? t.dataset.tip : esc(t.dataset.tip));
+  } else if (tipOwner) hideTip();
+});
+document.addEventListener('scroll', () => tipOwner && hideTip(), true);
+
+/* ---------- 轻提示 ---------- */
+let toastTimer;
+export function toast(text) {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    document.body.append(el);
+  }
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (el.hidden = true), 2200);
+}
+export async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('已复制 ' + (text.length > 40 ? text.slice(0, 40) + '…' : text));
+  } catch {
+    toast('复制失败');
+  }
+}
+
+/* ---------- 弹出选择（单选 / 多选，带搜索） ----------
+   items: [{ value, label, html?, group?, hint? }] */
+let openPop = null;
+export function closePop() {
+  openPop?.remove();
+  openPop = null;
+}
+export function picker(anchor, { items, multi = false, selected = [], placeholder = '搜索', onPick, footer = null, width = 320 }) {
+  closePop();
+  const sel = new Set(selected);
+  const pop = document.createElement('div');
+  pop.className = 'pop';
+  pop.style.width = width + 'px';
+  pop.innerHTML = `<div class="pop-search"><label class="input">${icon.search(13)}<input placeholder="${esc(placeholder)}" autocomplete="off"></label></div><div class="pop-list"></div>${multi || footer ? '<div class="pop-foot"></div>' : ''}`;
+  document.body.append(pop);
+  openPop = pop;
+  const r = anchor.getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(r.left, innerWidth - width - 8)) + 'px';
+  pop.style.top = r.bottom + 6 + 'px';
+  pop.style.maxHeight = Math.max(240, innerHeight - r.bottom - 24) + 'px';
+  const input = pop.querySelector('input');
+  const list = pop.querySelector('.pop-list');
+  let kb = -1;
+  let shown = [];
+  const draw = () => {
+    const q = input.value.trim().toLowerCase();
+    shown = items.filter((it) => !q || String(it.label).toLowerCase().includes(q) || String(it.hint ?? '').toLowerCase().includes(q)).slice(0, 400);
+    let lastGroup = null;
+    list.innerHTML = shown.map((it, i) => {
+      const g = it.group && it.group !== lastGroup ? `<div class="pop-grp">${esc(it.group)}</div>` : '';
+      lastGroup = it.group ?? lastGroup;
+      return `${g}<button class="opt${i === kb ? ' kb' : ''}" data-i="${i}" aria-selected="${sel.has(it.value)}">${multi ? `<span class="ck">${sel.has(it.value) ? icon.check(13) : ''}</span>` : ''}${it.html ?? `<span class="ell">${esc(it.label)}</span>`}${it.hint ? `<span class="faint" style="margin-left:auto;font-size:11.5px">${esc(it.hint)}</span>` : ''}</button>`;
+    }).join('') || '<div class="empty">没有匹配的</div>';
+  };
+  const choose = (it) => {
+    if (multi) {
+      sel.has(it.value) ? sel.delete(it.value) : sel.add(it.value);
+      draw();
+      onPick([...sel]);
+    } else {
+      closePop();
+      onPick(it.value);
+    }
+  };
+  list.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-i]');
+    if (b) choose(shown[Number(b.dataset.i)]);
+  });
+  input.addEventListener('input', () => { kb = 0; draw(); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') { kb = Math.min(shown.length - 1, kb + 1); draw(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { kb = Math.max(0, kb - 1); draw(); e.preventDefault(); }
+    else if (e.key === 'Enter' && shown[Math.max(0, kb)]) { choose(shown[Math.max(0, kb)]); e.preventDefault(); }
+    else if (e.key === 'Escape') closePop();
+  });
+  if (multi || footer) {
+    const foot = pop.querySelector('.pop-foot');
+    foot.innerHTML = footer ?? '<button class="btn sm ghost" data-clear>清空</button><button class="btn sm" data-done>完成</button>';
+    foot.addEventListener('click', (e) => {
+      if (e.target.closest('[data-clear]')) { sel.clear(); draw(); onPick([]); }
+      if (e.target.closest('[data-done]')) closePop();
+    });
+  }
+  draw();
+  setTimeout(() => input.focus(), 0);
+  return pop;
+}
+document.addEventListener('mousedown', (e) => {
+  if (openPop && !openPop.contains(e.target) && !e.target.closest('[data-pop-anchor]')) closePop();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && openPop) closePop();
+});
+
+/* ---------- 路径 ---------- */
+export function splitPath(p) {
+  const i = p.lastIndexOf('/');
+  return i < 0 ? ['', p] : [p.slice(0, i + 1), p.slice(i + 1)];
+}
+export function filePath(p) {
+  const [dir, base] = splitPath(p);
+  return `<span class="fp" title="${esc(p)}"><span><span class="dir">${esc(dir)}</span>${esc(base)}</span></span>`;
+}
+export const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|ico|avif|svg)$/i;
+
+export function debounce(fn, ms) {
+  let t;
+  return (...a) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...a), ms);
+  };
+}
