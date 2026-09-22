@@ -1,0 +1,14 @@
+{
+  "name": "branch-map",
+  "version": "0.1.0",
+  "private": true,
+  "description": "多个 Git 仓的分支与本地改动看板",
+  "type": "module",
+  "scripts": {
+    "collect": "node collect.mjs",
+    "collect:offline": "node collect.mjs --no-fetch"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
