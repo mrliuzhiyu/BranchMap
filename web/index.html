@@ -4,20 +4,22 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BranchMap</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='4' cy='3.5' r='2' fill='%233987e5'/%3E%3Ccircle cx='4' cy='12.5' r='2' fill='%233987e5'/%3E%3Ccircle cx='12' cy='6' r='2' fill='%23d95926'/%3E%3Cpath d='M4 5.5v5M12 8c0 2-3 2.5-8 2.5' stroke='%233987e5' stroke-width='1.6' fill='none'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='5' cy='4' r='2.4'/%3E%3Ccircle cx='5' cy='16' r='2.4'/%3E%3Ccircle cx='15' cy='7.5' r='2.4'/%3E%3Cpath d='M5 6.5v7M15 10c0 3-4 3.6-10 3.6' stroke='%23000' stroke-width='1.8' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <script>
-  // 主题：先读本机记住的选择，没有就跟随系统
+  // 主题：先读本机记住的选择，没有就用浅色
   try {
-    const saved = localStorage.getItem('bm-theme');
-    document.documentElement.dataset.theme = saved || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-  } catch { document.documentElement.dataset.theme = 'dark'; }
+    document.documentElement.dataset.theme = localStorage.getItem('bm-theme') || 'light';
+  } catch { document.documentElement.dataset.theme = 'light'; }
 </script>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div id="app">
-  <header class="top" id="top"></header>
-  <main id="view"></main>
+  <aside class="sidebar" id="side"></aside>
+  <div class="app-main">
+    <header class="phead" id="phead" hidden></header>
+    <main id="view"></main>
+  </div>
 </div>
 <div id="tip" hidden></div>
 <script type="module" src="app.js"></script>

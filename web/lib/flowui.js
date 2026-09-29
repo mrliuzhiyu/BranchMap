@@ -85,8 +85,7 @@ export function miniFlow(p) {
       else parts.push(`<span class="mg${g.pending ? ' has' : ''}" data-tip="${esc(g.pending ? `${g.pending} 个提交在 ${prev.name}、还没到 ${s.name}` : `${s.name} 已包含 ${prev.name} 的全部提交`)}">${g.pending ? g.pending + ' →' : '→'}</span>`);
     }
     if (s.kind === 'branch') {
-      const color = stageColor(p.stages, s);
-      parts.push(`<span class="ms" style="--st:${color}" data-tip="${esc(`分支 ${s.name} · ${s.short ?? ''}`)}"><i class="bar"></i>${esc(s.name)}</span>`);
+      parts.push(`<span class="ms" data-tip="${esc(`分支 ${s.name} · ${s.short ?? ''}`)}">${icon.branch(11)}${esc(s.name)}</span>`);
     } else {
       const led = s.state === 'up' && s.known ? 'up' : s.state === 'down' ? 'down' : 'unknown';
       const tip = s.state === 'down' ? '连不上' : !s.known ? (s.version ? `版本 ${s.version}，提交未知` : s.state === 'unconfigured' ? '未配置探测' : '读不出运行的版本') : `运行 ${s.short}${s.version ? ' · 版本 ' + s.version : ''}`;

@@ -32,8 +32,8 @@ export function mount(el, ctx) {
     const quiet = people.filter((p) => !busy.includes(p));
 
     root.innerHTML = `
-      <div class="phdr"><h1>成员</h1><span class="desc">${busy.length} 人最近在动${quiet.length ? ` · ${quiet.length} 位不活跃或是 AI 代理` : ''}</span><span class="grow"></span>
-        <label class="input" style="width:220px">${icon.search(13)}<input data-q placeholder="找人" value="${esc(q)}"></label></div>
+      <div class="sec-h"><h2>最近在动</h2><span class="tag">${busy.length}</span><span class="sub">${quiet.length ? `另有 ${quiet.length} 位不活跃或是 AI 代理` : ''}</span>
+        <span class="aside"><label class="input" style="width:220px">${icon.search(13)}<input data-q placeholder="找人" value="${esc(q)}"></label></span></div>
       <div class="people-grid">${busy.map((p) => card(o, p, itemsBy, last)).join('') || '<div class="empty">没有匹配的人</div>'}</div>
       ${quiet.length ? `<div class="fold-h">${icon.people(13)}不活跃 / AI 代理 · ${quiet.length}<button class="btn sm ghost" data-quiet>${showQuiet ? '收起' : '展开'}</button></div>${showQuiet ? `<div class="people-grid">${quiet.map((p) => card(o, p, itemsBy, last)).join('')}</div>` : ''}` : ''}`;
     if (focus != null) {

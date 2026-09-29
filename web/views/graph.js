@@ -32,9 +32,9 @@ export function mount(el, ctx) {
   let selRow = -1;
   let painted = { first: -1, last: -1 };
   let cancelDetail = null;
-  let detailW = Number(localStorage.getItem('bm-detail-w')) || 460;
+  let detailW = Number(localStorage.getItem('bm-detail-w')) || 420;
 
-  el.innerHTML = `<div class="graph-page">
+  el.innerHTML = `<div class="graph-page card-frame">
     <div class="toolbar">
       <button class="btn" data-branches data-pop-anchor>${icon.branch(13)}<span data-branches-label>全部分支</span>${icon.chevronDown(11)}</button>
       <div class="seg" data-presets>
@@ -145,7 +145,7 @@ export function mount(el, ctx) {
     V = { order, rows: L.rows, width: Math.min(L.width, MAX_LANES), wips: wipBy, rowOf, visible };
     computeMatches();
     const gw = PAD * 2 + (V.width - 1) * LW + 6;
-    list.style.setProperty('--cols', `${Math.max(gw, 56)}px minmax(320px, 1fr) 150px 128px 74px`);
+    list.style.setProperty('--cols', `${Math.max(gw, 56)}px minmax(260px, 1fr) 120px 100px 70px`);
     list.querySelector('.ghead').style.gridTemplateColumns = 'var(--cols)';
     body.style.height = order.length * RH + 'px';
     V.gw = Math.max(gw, 56);

@@ -28,13 +28,13 @@ export function mount(el, ctx) {
 
   const label = (st) => (st === 'released' && !M.prodB ? '已合并' : STATUS[st].label);
 
-  el.innerHTML = `<div class="branch-page">
+  el.innerHTML = `<div class="branch-page card-frame">
     <div class="toolbar">
       <div class="seg" data-tabs><button data-tab="branches">${icon.branch(13)} 分支 <span class="muted">${M.branches.size}</span></button><button data-tab="tags">${icon.tag(13)} 标签 <span class="muted">${M.tags.length}</span></button><button data-tab="compare">${icon.arrowSwap(13)} 对比</button></div>
       <span class="sep"></span>
       <div class="row" data-tools style="gap:10px;flex-wrap:wrap"></div>
     </div>
-    <div class="page" data-body style="padding-top:16px"></div>
+    <div class="page" data-body style="padding:16px 16px 32px"></div>
   </div>`;
   const tools = el.querySelector('[data-tools]');
   const body = el.querySelector('[data-body]');

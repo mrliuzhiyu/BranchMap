@@ -32,7 +32,7 @@ export function mount(el, ctx) {
     const o = ctx.overview;
     const L = o.local;
     if (!L || !L.checkouts.length) {
-      root.innerHTML = `<div class="phdr"><h1>本机</h1></div><div class="block"><div class="block-b">这台电脑的扫描目录（config.json 里的 scan）下面没有 ${esc(o.name)} 的仓库，所以这里没有东西。云端和环境的情况在「流水线」里照常能看。</div></div>`;
+      root.innerHTML = `<div class="block"><div class="block-b">这台电脑的扫描目录（config.json 里的 scan）下面没有 ${esc(o.name)} 的仓库，所以这里没有东西。云端和环境的情况在「流水线」里照常能看。</div></div>`;
       return;
     }
     const c = L.counts;
@@ -55,8 +55,7 @@ export function mount(el, ctx) {
       </tr>`).join('');
     const tile = (n, k, d, warn) => `<div class="tile"><div class="k">${k}</div><div class="v"${warn && n ? ' style="color:var(--warning-ink)"' : ''}>${n}</div><div class="d">${d}</div></div>`;
     root.innerHTML = `
-      <div class="phdr"><h1>本机</h1><span class="desc">${esc(o.name)} 在这台电脑上的 ${c.checkouts} 个工作区</span><span class="grow"></span>
-        <span class="local-note">${icon.info(12)}和 BranchMap 的云端副本比（${o.sync.lastOk ? ago(Math.floor(o.sync.lastOk / 1000)) + '同步' : '还没同步'}），不会在你的仓库里 fetch · ${ago(Math.floor(L.scannedAt / 1000))}扫描</span></div>
+      <div class="local-note">${icon.info(12)}${esc(o.name)} 在这台电脑上的 ${c.checkouts} 个工作区，和 BranchMap 的云端副本比（${o.sync.lastOk ? ago(Math.floor(o.sync.lastOk / 1000)) + '同步' : '还没同步'}），不会在你的仓库里 fetch · ${ago(Math.floor(L.scannedAt / 1000))}扫描</div>
       <div class="tiles" style="margin-bottom:16px">
         ${tile(c.unpushedBranches, `${icon.arrowUp(12)}没推送的分支`, c.unpushedCommits ? `共 ${c.unpushedCommits} 个提交只在本机` : '都推上去了', true)}
         ${tile(c.behind, `${icon.arrowDown(12)}落后云端的工作区`, '云端有新提交，本机还没拉', false)}

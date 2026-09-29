@@ -3,7 +3,7 @@
 //   左：在途工作 —— 按工单 / PR / 分支归组，每件工作走到了哪一站；点开看提交和差异。
 //   右：健康、最近在动的人、本机。
 import { esc, icon, avatar, avatarStack, ago, stamp, fullStamp, when, levelIcon, picker, debounce, span, nowSec } from '../lib/util.js';
-import { track, trackLegend, stageColor, stageIcon, envStateLabel, envLed } from '../lib/flowui.js';
+import { track, trackLegend, stageIcon, envStateLabel, envLed } from '../lib/flowui.js';
 import { openCommitDiff } from '../lib/commitview.js';
 
 export function mount(el, ctx) {
@@ -27,33 +27,21 @@ export function mount(el, ctx) {
   function render(changedKeys = new Set()) {
     const o = ctx.overview;
     root.innerHTML = `
-      ${header(o)}
-      <section class="block" data-pipe>${pipeline(o, changedKeys)}</section>
+      <section class="section" data-pipe>${pipeline(o, changedKeys)}</section>
       <div class="flow-grid">
         <section class="block" data-items>${itemsBlock(o)}</section>
         <div class="flow-side">
-          <section class="block">${healthBlock(o)}</section>
-          <section class="block">${peopleBlock(o)}</section>
-          <section class="block">${localBlock(o)}</section>
+          <section class="block aside">${healthBlock(o)}</section>
+          <section class="block aside">${peopleBlock(o)}</section>
+          <section class="block aside">${localBlock(o)}</section>
         </div>
       </div>`;
-  }
-
-  function header(o) {
-    const flowText = o.stages.map((s) => s.name).join(' → ');
-    return `<div class="phdr">
-      <h1>${esc(o.name)}</h1>
-      ${o.description ? `<span class="desc">${esc(o.description)}</span>` : ''}
-      <span class="grow"></span>
-      ${o.web ? `<a class="btn sm ghost" href="${esc(o.web)}" target="_blank" rel="noreferrer">${icon.ext(12)}${esc(o.slug ?? o.web)}</a>` : ''}
-      <span class="muted" style="font-size:12px" data-tip="流向：从左到右，代码一站一站往前走">${icon.flow(12)} ${esc(flowText || '没有识别出主线')}</span>
-    </div>`;
   }
 
   /* ---------- 流水线 ---------- */
   function pipeline(o, changedKeys) {
     if (!o.stages.length) {
-      return `<div class="block-b"><div class="note">没有找到 dev / main 这样的主线分支，所以画不出流水线。可以在 config.json 里给这个项目写 <span class="mono">"flow": ["dev", "main"]</span>。下面的在途工作按最近的提交列出。</div></div>`;
+      return `<div class="sec-h"><h2>流水线</h2><span class="tag">Pipeline</span></div><div class="note">没有找到 dev / main 这样的主线分支，所以画不出流水线。可以在 config.json 里给这个项目写 <span class="mono">"flow": ["dev", "main"]</span>。下面的在途工作按最近的提交列出。</div>`;
     }
     const persons = o.persons;
     const active = o.branches.filter((b) => b.status === 'active');
@@ -77,7 +65,7 @@ export function mount(el, ctx) {
       }
     });
     const extra = o.extraEnvs.length ? `<div class="pipe-extra">${o.extraEnvs.map((s) => envStation(o, s, changedKeys.has(s.key))).join('')}</div>` : '';
-    return `<div class="block-h"><h2>${icon.flow(14)}流水线</h2><span class="sub">每一站现在在哪，站与站之间差多少。点中间的数字，下面只看卡在那一段的工作</span></div>
+    return `<div class="sec-h"><h2>流水线</h2><span class="tag">Pipeline</span><span class="aside">点中间的数字，下面只看卡在那一段的工作</span></div>
       <div class="pipe">${parts.join('')}</div>${extra}`;
   }
 
@@ -104,8 +92,7 @@ export function mount(el, ctx) {
   }
 
   function branchStation(o, s, flash) {
-    const color = stageColor(o.stages, s);
-    return `<div class="station${flash ? ' flash' : ''}" style="--st:${color}" data-station="${esc(s.key)}">
+    return `<div class="station${flash ? ' flash' : ''}" data-station="${esc(s.key)}">
       <div class="sh">${icon.branch(14)}<span class="mono" style="font-size:13px">${esc(s.name)}</span><span class="k">分支</span></div>
       <div class="subj" data-tip="${esc(s.tip?.subject ?? '')}">${esc(s.tip?.subject ?? '')}</div>
       ${commitMeta(o, s.tip)}
@@ -183,12 +170,12 @@ export function mount(el, ctx) {
     if (!body) {
       body = `<div class="items-empty">${icon.checkCircle(20)}<span>${S.q || S.who != null ? '没有符合条件的工作' : S.seg != null ? '这一段没有卡着的工作' : '没有在途的工作'}</span>${S.q || S.who != null || S.seg != null ? '<button class="btn sm" data-clear>清除筛选</button>' : ''}</div>`;
     }
-    return `<div class="block-h"><h2>在途工作</h2><span class="sub">按工单 / PR / 分支归组 · 最近 ${o.windowDays} 天 + 所有没上线的</span>
-        <div class="actions">${trackLegend()}</div></div>
-      <div class="chips">${chips.join('')}<span class="grow"></span>
-        <button class="btn sm" data-who data-pop-anchor>${who ? avatar(who, 16) + esc(who.name) : icon.people(12) + '所有人'}${icon.chevronDown(10)}</button>
-        <label class="input" style="width:200px;height:26px">${icon.search(12)}<input data-q placeholder="搜工单、标题、分支、提交" value="${esc(S.q)}"></label>
-      </div>
+    return `<div class="block-h"><h2>在途工作</h2><span class="sub" data-tip="${esc(`按工单 / PR / 分支归组；列出最近 ${o.windowDays} 天有动静的，和所有还没走完的`)}">最近 ${o.windowDays} 天</span>
+        <div class="actions">
+          <button class="btn sm" data-who data-pop-anchor>${who ? avatar(who, 16) + esc(who.name) : icon.people(12) + '所有人'}${icon.chevronDown(10)}</button>
+          <label class="input" style="width:210px;height:28px">${icon.search(12)}<input data-q placeholder="搜工单、标题、分支、提交" value="${esc(S.q)}"></label>
+        </div></div>
+      <div class="chips">${chips.join('')}<span class="grow"></span>${trackLegend()}</div>
       <div data-list>${body}</div>`;
   }
 
@@ -249,8 +236,8 @@ export function mount(el, ctx) {
       const tag = s.link ? 'button' : 'div';
       return `<${tag} class="sig"${clickable}>${levelIcon(s.level, 14)}<span class="sig-t">${esc(s.title)}</span>${s.link ? `<span class="go">${icon.chevronRight(12)}</span>` : '<span></span>'}${s.detail ? `<span class="sig-d">${esc(s.detail)}</span>` : ''}</${tag}>`;
     }).join('');
-    return `<div class="block-h"><h2>${icon.pulse(14)}健康</h2><div class="actions">${n('critical') ? `<span class="pill bad">${icon.xCircle(11)}<span>${n('critical')}</span></span>` : ''}${n('warning') ? `<span class="pill warn">${icon.alert(11)}<span>${n('warning')}</span></span>` : ''}${n('info') ? `<span class="pill">${icon.info(11)}<span>${n('info')}</span></span>` : ''}</div></div>
-      <div>${list || `<div class="ok-box">${levelIcon('good', 16)}一切正常：环境跟得上分支，没有反向的提交，本机也都推送了</div>`}</div>`;
+    return `<div class="block-h"><h2>健康</h2><div class="actions">${n('critical') ? `<span class="pill bad">${icon.xCircle(11)}<span>${n('critical')}</span></span>` : ''}${n('warning') ? `<span class="pill warn">${icon.alert(11)}<span>${n('warning')}</span></span>` : ''}${n('info') ? `<span class="pill">${icon.info(11)}<span>${n('info')}</span></span>` : ''}</div></div>
+      <div class="sig-list">${list || `<div class="ok-box">${levelIcon('good', 16)}一切正常：环境跟得上分支，没有反向的提交，本机也都推送了</div>`}</div>`;
   }
 
   function peopleBlock(o) {
@@ -261,18 +248,18 @@ export function mount(el, ctx) {
       const bars = p.d14.map((v, i) => `<i class="${v ? '' : 'z'}" style="height:${v ? Math.max(3, Math.round((v / max) * 22)) : 2}px" data-tip="${esc(`${14 - i === 1 ? '今天' : (14 - i - 1) + ' 天前'}：${v} 个提交`)}"></i>`).join('');
       return `<a class="who-row" href="${ctx.href('people', { p: p.id })}">${avatar(person, 28)}<span class="n1 ell">${esc(p.name)}</span><span class="bars14">${bars}</span><span class="n2">${p.items.length ? `${p.items.length} 件工作 · ` : ''}${p.branches.length ? `${p.branches.length} 条分支 · ` : ''}${ago(p.last)}活跃</span></a>`;
     }).join('');
-    return `<div class="block-h"><h2>${icon.people(14)}最近在动的人</h2><span class="sub">近 14 天每天的提交</span><div class="actions"><a class="btn sm ghost" href="${ctx.href('people')}">全部${icon.chevronRight(11)}</a></div></div>
-      <div>${rows || '<div class="empty">最近没有人提交</div>'}</div>`;
+    return `<div class="block-h"><h2>最近在动的人</h2><span class="sub">近 14 天</span><div class="actions"><a class="btn sm ghost" href="${ctx.href('people')}">全部${icon.chevronRight(11)}</a></div></div>
+      <div style="padding-bottom:8px">${rows || '<div class="empty">最近没有人提交</div>'}</div>`;
   }
 
   function localBlock(o) {
     const L = o.local;
     if (!L || !L.checkouts.length) {
-      return `<div class="block-h"><h2>${icon.desktop(14)}本机</h2></div><div class="block-b muted" style="font-size:12.5px">这台电脑的扫描目录里没有这个仓库，所以只能看云端。</div>`;
+      return `<div class="block-h"><h2>本机</h2></div><div class="block-b muted" style="font-size:12.5px;padding-top:6px">这台电脑的扫描目录里没有这个仓库，所以只能看云端。</div>`;
     }
     const c = L.counts;
     const t = (n, label, warn, tip) => `<a class="t${warn && n ? ' warn' : ''}" href="${ctx.href('local')}" data-tip="${esc(tip)}"><b>${n}</b><span>${label}</span></a>`;
-    return `<div class="block-h"><h2>${icon.desktop(14)}本机</h2><span class="sub">${c.checkouts} 个工作区 · ${ago(Math.floor(L.scannedAt / 1000))}扫描</span><div class="actions"><a class="btn sm ghost" href="${ctx.href('local')}">详情${icon.chevronRight(11)}</a></div></div>
+    return `<div class="block-h"><h2>本机</h2><span class="sub">${c.checkouts} 个工作区 · ${ago(Math.floor(L.scannedAt / 1000))}扫描</span><div class="actions"><a class="btn sm ghost" href="${ctx.href('local')}">详情${icon.chevronRight(11)}</a></div></div>
       <div class="mini-tiles">
         ${t(c.unpushedBranches, `条分支没推送${c.unpushedCommits ? `（${c.unpushedCommits} 个提交）` : ''}`, true, '本机有、云端任何分支都没有的提交')}
         ${t(c.behind, '个工作区落后云端', false, '云端有新提交，本机还没拉')}
