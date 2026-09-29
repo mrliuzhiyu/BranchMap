@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { exec } from 'node:child_process';
 import { loadConfig } from './lib/config.mjs';
 import { Workspace } from './lib/project.mjs';
-import { firstLine } from './lib/git.mjs';
+import { firstLine, git, run } from './lib/git.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 let cfg;
@@ -42,6 +42,8 @@ const routes = [
   ['GET', /^\/api\/board$/, async () => ({
     projects: await Promise.all(ws.list().map((p) => p.board())),
   })],
+  // 我：本机 Git 的身份 + GitHub 账号的头像（gh 登录了才有），侧栏底部显示
+  ['GET', /^\/api\/me$/, () => me()],
   // 项目化：候选仓库、添加、移除
   ['GET', /^\/api\/discovered$/, () => ws.discovered()],
   ['POST', /^\/api\/projects$/, async (p, q, m, res, req) => {
@@ -50,6 +52,41 @@ const routes = [
     if (!remote) throw Object.assign(new Error('填一个仓库地址'), { status: 400 });
     const id = ws.addProject({ remote, name: String(body.name ?? '').trim().slice(0, 40), group: String(body.group ?? '').trim().slice(0, 20) }, here);
     return { ok: true, id };
+  }],
+  // 项目设置：主线分支（上线分支 + 可选的集成分支）和环境
+  ['POST', P('/settings'), async (p, q, m, res, req) => {
+    const body = await readBody(req);
+    const G = await p.graph();
+    let flow;
+    if (body.flow !== undefined) {
+      flow = Array.isArray(body.flow) ? body.flow.filter(Boolean).map(String) : [];
+      if (flow.length > 2 || new Set(flow).size !== flow.length || flow.some((b) => !G.branches.has(b))) throw Object.assign(new Error('主线分支选得不对'), { status: 400 });
+    }
+    const envs = body.environments;
+    if (envs !== undefined) {
+      if (!Array.isArray(envs) || envs.some((e) => typeof e?.name !== 'string' || !e.name.trim() || e.name.length > 40)) throw Object.assign(new Error('环境格式不对'), { status: 400 });
+      for (const e of envs) {
+        if (e.probe && !/^https?:\/\/\S+$/i.test(String(e.probe).trim())) throw Object.assign(new Error('探测地址要以 http:// 或 https:// 开头'), { status: 400 });
+      }
+    }
+    await p.setSettings({ flow, environments: envs }, here);
+    return { ok: true };
+  }],
+  // 分支的自定义标签
+  ['POST', P('/branch-tags'), async (p, q, m, res, req) => {
+    const body = await readBody(req);
+    const branch = String(body?.branch ?? '');
+    const tags = Array.isArray(body?.tags) ? [...new Set(body.tags.map((t) => String(t).trim()).filter(Boolean))].slice(0, 8) : null;
+    if (!branch || !tags || tags.some((t) => t.length > 16)) throw Object.assign(new Error('标签格式不对'), { status: 400 });
+    p.setBranchTags(branch, tags, here);
+    return { ok: true };
+  }],
+  // 左侧栏拖动排序（顺带改分组）：body = { order: [{ id, group }] }
+  ['POST', /^\/api\/projects\/order$/, async (p, q, m, res, req) => {
+    const body = await readBody(req);
+    if (!Array.isArray(body?.order) || body.order.some((x) => typeof x?.id !== 'string')) throw Object.assign(new Error('顺序格式不对'), { status: 400 });
+    ws.reorder(body.order, here);
+    return { ok: true };
   }],
   ['POST', P('/remove'), (p) => {
     ws.removeProject(p.id, here);
@@ -88,6 +125,19 @@ const routes = [
     return { ok: true };
   }],
 ];
+
+let meCache = null;
+async function me() {
+  if (meCache && Date.now() - meCache.at < 30 * 60 * 1000) return meCache.value;
+  const [name, email, gh] = await Promise.all([
+    git(here, ['config', '--global', 'user.name']).then((s) => s.trim()).catch(() => ''),
+    git(here, ['config', '--global', 'user.email']).then((s) => s.trim()).catch(() => ''),
+    run('gh', ['api', 'user', '--jq', '{login: .login, avatar: .avatar_url, name: .name}'], { timeout: 10000 }).then((s) => JSON.parse(s)).catch(() => null),
+  ]);
+  const value = { name: name || gh?.name || gh?.login || null, email: email || null, login: gh?.login ?? null, avatar: gh?.avatar ? gh.avatar + (gh.avatar.includes('?') ? '&' : '?') + 's=64' : null };
+  meCache = { at: Date.now(), value };
+  return value;
+}
 
 function readBody(req) {
   return new Promise((resolve, reject) => {

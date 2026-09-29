@@ -4,23 +4,29 @@
 //   #/p/<项目>/people        成员卡片
 //   #/p/<项目>/people/<人>   一个人的详情
 // 服务端的数据一变就推过来，当前页面就地刷新。
-import { $, esc, icon, ago, stamp, picker, toast, closePop, worst, levelIcon } from './lib/util.js';
+import { $, esc, icon, ago, stamp, picker, toast, closePop, worst, levelIcon, avatar } from './lib/util.js';
 import { listProjects, storeFor, connectEvents, onServerChange, request } from './lib/api.js';
 import { closeChanges } from './lib/changes.js';
 import { openAddProject } from './lib/addproject.js';
+import { startAmbient } from './lib/ambient.js';
+import { openSettings } from './lib/settings.js';
+import { sortable, isDragging } from './lib/sortable.js';
 import * as board from './views/board.js';
 import * as project from './views/project.js';
 import * as members from './views/members.js';
+import * as branches from './views/branches.js';
 
 const VIEWS = {
   board: { mod: board, label: '看板' },
   graph: { mod: project, label: '分支图', model: true },
   people: { mod: members, label: '成员' },
+  branches: { mod: branches, label: '分支', model: true },
 };
 
 let projectList = null;
 let mounted = null; // { key, inst }
 let live = true;
+let me = null; // 本机 Git 身份 + GitHub 头像
 
 function parse() {
   const h = location.hash.replace(/^#/, '') || '/';
@@ -28,14 +34,14 @@ function parse() {
   const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
   const params = new URLSearchParams(query);
   if (parts[0] === 'p' && parts[1]) {
-    const view = parts[2] === 'people' ? 'people' : 'graph';
+    const view = parts[2] === 'people' ? 'people' : parts[2] === 'branches' ? 'branches' : 'graph';
     return { id: parts[1], view, sub: view === 'people' ? parts[3] ?? null : null, params };
   }
   return { id: null, view: 'board', sub: null, params };
 }
 export function href(id, view = 'graph', params = {}, sub = null) {
   const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== '')).toString();
-  const path = view === 'people' ? `/people${sub != null ? '/' + encodeURIComponent(sub) : ''}` : '';
+  const path = view === 'people' ? `/people${sub != null ? '/' + encodeURIComponent(sub) : ''}` : view === 'branches' ? '/branches' : '';
   return `#/p/${encodeURIComponent(id)}${path}${q ? '?' + q : ''}`;
 }
 function setParams(patch) {
@@ -59,6 +65,8 @@ const groupsOf = () => [...new Set((projectList?.projects ?? []).map((p) => p.gr
 
 /* ---------- 左侧导航栏 ---------- */
 function renderSide() {
+  // 正在拖项目排序：先不重画，松手后再画
+  if (isDragging()) return void (sidePending = true);
   const route = parse();
   const cur = currentProject(route);
   const list = projectList?.projects ?? [];
@@ -72,29 +80,73 @@ function renderSide() {
   const item = (p) => {
     const lv = !p.ready ? (p.sync?.status === 'error' ? 'critical' : 'busy') : worst(p.health);
     const tip = !p.ready ? (p.sync?.status === 'error' ? '云端副本建不起来' : '正在建云端副本') : lv === 'critical' ? `${p.health.critical} 个严重问题` : lv === 'warning' ? `${p.health.warning} 个需要注意` : '';
-    const target = route.id ? href(p.id, route.view === 'people' ? 'people' : 'graph') : href(p.id);
-    return `<div class="pj${p.id === cur ? ' on' : ''}" data-pj="${esc(p.id)}">
-      <a href="${target}"><span class="nm">${esc(p.name)}</span>${lv === 'critical' || lv === 'warning' || lv === 'busy' ? `<i class="sd ${lv}" data-tip="${esc(tip)}"></i>` : ''}${p.ready && p.inFlight ? `<span class="ct" data-tip="在途的工作">${p.inFlight}</span>` : ''}</a>
+    const target = route.id ? href(p.id, route.view === 'people' || route.view === 'branches' ? route.view : 'graph') : href(p.id);
+    return `<div class="pj${p.id === cur ? ' on' : ''}" data-pj="${esc(p.id)}" data-group="${esc(p.group ?? '')}">
+      <a href="${target}"><span class="ri">${icon.repo(13)}</span><span class="nm">${esc(p.name)}</span>${lv === 'critical' || lv === 'warning' || lv === 'busy' ? `<i class="sd ${lv}" data-tip="${esc(tip)}"></i>` : ''}${p.ready && p.inFlight ? `<span class="ct" data-tip="在途的工作">${p.inFlight}</span>` : ''}</a>
       <button class="pm" data-pmenu="${esc(p.id)}" data-pop-anchor data-tip="更多">${icon.kebab(13)}</button>
     </div>`;
   };
   const failed = list.filter((p) => p.sync?.status === 'error').length;
+  const keep = $('#side .pjs')?.scrollTop ?? 0; // 重画不丢项目列表的滚动位置
   $('#side').innerHTML = `
-    <a class="logo" href="#/">${icon.logo(20)}<b>BranchMap</b></a>
+    <a class="logo" href="#/">${icon.logo(22)}<b>BranchMap</b></a>
+    <button class="sbs" data-search data-pop-anchor>${icon.search(14)}<span>搜索项目</span><kbd>Ctrl K</kbd></button>
+    <p class="lab">浏览</p>
     <nav class="nvs">
       ${nav('board', 'home', '看板', '#/', route.view === 'board')}
-      ${cur ? nav('graph', 'branch', '分支图', href(cur), route.view === 'graph') : ''}
+      ${cur ? nav('graph', 'flow', '分支图', href(cur), route.view === 'graph') : ''}
+      ${cur ? nav('branches', 'branch', '分支', href(cur, 'branches'), route.view === 'branches') : ''}
       ${cur ? nav('people', 'people', '成员', href(cur, 'people'), route.view === 'people') : ''}
     </nav>
     <div class="pjs">
       <p class="lab"><span>项目</span><button class="icon-btn" data-add data-tip="添加项目">${icon.plus(13)}</button></p>
-      ${[...groups].map(([g, ps]) => `${groups.size > 1 ? `<p class="lab sub">${esc(g)}</p>` : ''}${ps.map(item).join('')}`).join('')}
+      ${[...groups].map(([g, ps]) => `${groups.size > 1 ? `<p class="lab sub" data-grp="${esc(ps[0].group ?? '')}">${esc(g)}</p>` : ''}${ps.map(item).join('')}`).join('')}
       ${!projectList ? '<div class="quiet"><span class="spin" style="display:inline-grid">' + icon.sync(12) + '</span></div>' : ''}
     </div>
     <div class="sfoot">
-      ${live ? `<i class="led ${failed ? 'critical' : 'good'}"></i><span class="grow" data-tip="${failed ? `${failed} 个项目云端同步失败` : '实时连接正常，数据变了会自动刷新'}">${failed ? `${failed} 个同步失败` : '实时'}</span>` : `<span class="grow warnc" data-tip="和本机服务的连接断了，正在重连">${icon.alert(12)} 重连中</span>`}
+      <button class="meb" data-me data-tip="${esc([me?.name, me?.login ? '@' + me.login : '', me?.email, live ? (failed ? `${failed} 个项目云端同步失败` : '实时连接正常，数据变了会自动刷新') : '和本机服务的连接断了，正在重连'].filter(Boolean).join('\n'))}">
+        <span class="mav">${avatar(me ?? { name: '?' }, 28)}<i class="led ${!live ? 'warning' : failed ? 'critical' : 'good'}"></i></span>
+        <span class="mnm"><b>${esc(me?.name ?? '本机')}</b>${me?.login ? `<span>@${esc(me.login)}</span>` : ''}</span>
+      </button>
       <button class="icon-btn" data-theme data-tip="深色 / 浅色">${document.documentElement.dataset.theme === 'dark' ? icon.sun(14) : icon.moon(14)}</button>
     </div>`;
+  $('#side .pjs').scrollTop = keep;
+}
+let sidePending = false;
+
+/* ---------- 项目拖动排序：按住上下拖，拖过分组标题就换组；顺序写回配置，看板跟着同一个顺序 ---------- */
+sortable($('#side'), {
+  item: '[data-pj]',
+  ignore: '[data-pmenu]',
+  scroller: () => $('#side .pjs'),
+  onDrop: async (order) => {
+    const byId = new Map((projectList?.projects ?? []).map((p) => [p.id, p]));
+    // 没有分组标题时（只有一组）各自保留原来的分组
+    const next = order.map((x) => ({ id: x.id, group: x.group === undefined ? byId.get(x.id)?.group ?? null : x.group || null }));
+    if (projectList) projectList = { ...projectList, projects: next.map((x) => ({ ...byId.get(x.id), group: x.group })).filter((p) => p.id) };
+    renderSide();
+    try {
+      await request('/api/projects/order', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ order: next }) });
+    } catch (e) {
+      toast('排序没存上：' + e.message);
+      projectList = await listProjects().catch(() => projectList);
+      renderSide();
+    }
+  },
+});
+document.addEventListener('pointerup', () => setTimeout(() => {
+  if (sidePending && !isDragging()) {
+    sidePending = false;
+    renderSide();
+  }
+}, 0));
+
+/** 「我」在当前项目里是哪个成员（按名字 / GitHub 账号对上）。 */
+function myPersonId(o) {
+  if (!me || !o?.persons) return null;
+  const keys = [me.name, me.login].filter(Boolean).map((x) => x.toLowerCase());
+  const p = o.persons.find((x) => [x.name, ...(x.names ?? []), x.login].filter(Boolean).some((n) => keys.includes(n.toLowerCase())));
+  return p ? p.id : null;
 }
 
 /* ---------- 顶栏：在哪（可点回上一层）+ 当前项目的状态 + 添加项目 ---------- */
@@ -103,13 +155,12 @@ function renderTop() {
   const o = route.id ? storeFor(route.id).overview : null;
   const P = route.id ? projectList?.projects.find((p) => p.id === route.id) : null;
   const crumbs = [];
-  if (!route.id) crumbs.push('<b>看板</b>');
-  else {
+  if (route.id) {
     const name = o?.name ?? P?.name ?? route.id;
     if (route.view === 'people' && route.sub != null) {
       const person = o?.persons?.[Number(route.sub)];
-      crumbs.push(`<a href="${href(route.id)}">${esc(name)}</a>`, `<a href="${href(route.id, 'people')}">成员</a>`, `<b>${esc(person?.name ?? '')}</b>`);
-    } else crumbs.push(`<b>${esc(name)}</b>`, `<span>${VIEWS[route.view].label}</span>`);
+      crumbs.push(`<a href="${href(route.id)}">${icon.repo(12)}${esc(name)}</a>`, `<a href="${href(route.id, 'people')}">成员</a>`, `<b>${avatar(person, 16)}${esc(person?.name ?? '')}</b>`);
+    } else crumbs.push(`<b>${icon.repo(12)}${esc(name)}</b>`, `<span>${VIEWS[route.view].label}</span>`);
   }
   let status = '';
   if (route.id && o?.ready) {
@@ -120,7 +171,8 @@ function renderTop() {
     const tip = s.status === 'error' ? `同步失败：${s.error ?? ''}\n点击重试` : `${s.lastOk ? '云端 ' + ago(Math.floor(s.lastOk / 1000)) + '同步（' + stamp(Math.floor(s.lastOk / 1000)) + '）' : '还没同步'}\n点击立即同步`;
     status = `${lv ? `<button class="tb hl ${lv}" data-health data-pop-anchor data-tip="${esc(hl.map((h) => h.title).join('\n'))}">${levelIcon(lv, 14)}<span>${hl.length}</span></button>` : ''}
       <button class="tb" data-sync data-tip="${esc(tip)}">${icon.cloud(15)}<i class="led ${led}"></i></button>
-      ${o.web ? `<a class="tb" href="${esc(o.web)}" target="_blank" rel="noreferrer" data-tip="${esc(o.slug ?? o.web)}">${icon.ext(14)}</a>` : ''}`;
+      ${o.web ? `<a class="tb" href="${esc(o.web)}" target="_blank" rel="noreferrer" data-tip="${esc(o.slug ?? o.web)}">${icon.ext(14)}</a>` : ''}
+      <button class="tb" data-settings data-tip="项目设置：主线分支、环境">${icon.gear(15)}</button>`;
   }
   $('#top').innerHTML = `
     <nav class="crumbs">${crumbs.join(`<i>${icon.chevronRight(11)}</i>`)}</nav>
@@ -143,9 +195,17 @@ async function openSwitch(anchor) {
     selected: [currentProject(route)],
     width: 280,
     onPick: (id) => {
-      location.hash = href(id, route.view === 'people' ? 'people' : 'graph');
+      location.hash = href(id, route.view === 'people' || route.view === 'branches' ? route.view : 'graph');
     },
   });
+}
+
+/** 健康信号的 link → 去哪（页面上所有「问题」都能点过去）。 */
+export function linkHref(id, link) {
+  if (!link) return href(id);
+  if (link.view === 'branches') return href(id, 'branches', { f: link.f });
+  if (link.view === 'settings') return href(id, 'graph', { settings: 1 });
+  return href(id, 'graph', { c: link.c, b: link.b, t: link.t, env: link.env });
 }
 function addProject() {
   openAddProject({
@@ -162,14 +222,29 @@ function addProject() {
 document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
     e.preventDefault();
-    openSwitch($('#side .logo'));
+    openSwitch($('#side [data-search]'));
   }
 });
 document.addEventListener('click', async (e) => {
-  const t = e.target.closest('#side [data-add], #top [data-add], #side [data-theme], #side [data-pmenu], #top [data-sync], #top [data-health]');
+  const t = e.target.closest('#side [data-add], #top [data-add], #top [data-settings], #side [data-search], #side [data-theme], #side [data-me], #side [data-pmenu], #top [data-sync], #top [data-health]');
   if (!t) return;
   const route = parse();
   if (t.dataset.add !== undefined) addProject();
+  else if (t.dataset.settings !== undefined) {
+    const store = storeFor(route.id);
+    const model = await store.loadModel().catch((err) => toast(err.message));
+    if (model) openSettings({ id: route.id, name: store.overview?.name ?? route.id, model });
+  }
+  else if (t.dataset.me !== undefined) {
+    // 点「我」：去当前项目里我的成员详情；认不出是谁就去成员列表
+    const id = currentProject(route);
+    if (!id) return;
+    const store = storeFor(id);
+    const o = store.overview ?? (await store.loadOverview().catch(() => null));
+    const pid = myPersonId(o);
+    location.hash = href(id, 'people', {}, pid);
+  }
+  else if (t.dataset.search !== undefined) openSwitch(t);
   else if (t.dataset.theme !== undefined) {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = next;
@@ -213,10 +288,13 @@ document.addEventListener('click', async (e) => {
   } else if (t.dataset.health !== undefined) {
     const o = storeFor(route.id).overview;
     picker(t, {
-      items: o.health.map((h, i) => ({ value: String(i), label: h.title, html: `${levelIcon(h.level, 13)}<span style="white-space:normal;line-height:1.45">${esc(h.title)}${h.detail ? `<br><span class="muted" style="font-size:11.5px">${esc(h.detail)}</span>` : ''}</span>` })),
+      items: o.health.map((h, i) => ({ value: String(i), label: h.title, html: `${levelIcon(h.level, 13)}<span style="white-space:normal;line-height:1.45;flex:1">${esc(h.title)}${h.detail ? `<br><span class="muted" style="font-size:11.5px">${esc(h.detail)}</span>` : ''}</span>${h.link ? icon.chevronRight(12) : ''}` })),
       placeholder: '',
-      width: 380,
-      onPick: () => {},
+      width: 400,
+      onPick: (v) => {
+        const h = o.health[Number(v)];
+        if (h?.link) location.hash = linkHref(route.id, h.link);
+      },
     });
   }
 });
@@ -241,7 +319,7 @@ async function route_() {
   if (!route.id) {
     el.innerHTML = '';
     document.title = 'BranchMap';
-    mounted = { key, inst: def.mod.mount(el, { href, addProject }) };
+    mounted = { key, inst: def.mod.mount(el, { href, addProject, linkHref }) };
     return;
   }
   try {
@@ -282,6 +360,7 @@ async function route_() {
     sub: route.sub,
     href: (view, params, sub) => href(route.id, view, params, sub),
     setParams,
+    me: () => myPersonId(store.overview),
   };
   mounted = { key, inst: def.mod.mount(el, ctx) };
   document.title = `${store.overview.name} · ${def.label} · BranchMap`;
@@ -329,5 +408,10 @@ connectEvents((ok) => {
 listProjects().then((l) => {
   projectList = l;
   renderChrome();
+}).catch(() => {});
+startAmbient();
+request('/api/me').then((m) => {
+  me = m;
+  renderSide();
 }).catch(() => {});
 route_();

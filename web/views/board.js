@@ -1,22 +1,46 @@
-// 看板（首页）：所有项目放在一起看，只回答「现在要注意什么」，每一行都能点进去。
-//   需要处理 —— 各项目的严重 / 注意问题，按轻重排
-//   项目     —— 每个项目的 main、dev 两条主线和它们的环境：落后多少、是否一致
-//   人       —— 谁在忙：手上的分支、最近一次动静（跨项目合并同一个人）
-//   本机     —— 我这台电脑上没推送的分支、没提交的改动
-// 四个模块互不依赖：各自只读看板数据里自己那一块，各自一个渲染函数。
-import { esc, icon, ago, avatar, levelIcon } from '../lib/util.js';
+// 看板（首页）：所有项目放在一起看，回答「每个项目的工作走到哪了、要我做什么决定」。每样东西都能点进去。
+//   项目（左，主体）—— 每个项目一块：
+//       线路图：进行中的分支（虚线 = 还没合进去）汇入 dev，dev 汇入 main；环境是路上的站点，
+//               已进 dev 等上线的分支是停在 dev 上的小点，待上线 / 没回合的数量标在 dev → main 的连线上
+//       决策：这个项目要处理的问题，紧挨着它的线路图
+//   本机（右）—— 我这台电脑上没推送的分支、没提交的改动
+//   成员（右）—— 谁在忙：手上的分支、最近一次动静（跨项目合并同一个人）
+// 项目的顺序和左侧栏一致（侧栏里拖动排序）。模块互不依赖：各自只读看板数据里自己那一块。
+import { esc, icon, ago, avatar, levelIcon, prChip } from '../lib/util.js';
 import { request } from '../lib/api.js';
 import { MAIN, DEV, branchColor } from '../lib/colors.js';
 
 const LEVEL = { critical: 0, warning: 1, info: 2 };
+// 线路图的几何：分支一行矮一点，主线一行高一点（站点名字写在站点下面）
+const BH = 26;
+const RH = 42;
+const MAX_BRANCHES = 5;
+const J1 = 0.34; // 分支在这里转下去汇入 dev
+const J2 = 0.76; // dev 在这里转下去汇入 main
+const DAY = 86400;
 
-export function mount(el, { href, addProject }) {
+function loadFold() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem('bm-board-fold') ?? '[]'));
+  } catch {
+    return new Set();
+  }
+}
+function saveFold(s) {
+  try {
+    localStorage.setItem('bm-board-fold', JSON.stringify([...s]));
+  } catch { /* 无痕模式 */ }
+}
+
+export function mount(el, { href, addProject, linkHref }) {
   el.innerHTML = '<div class="page"><div class="board" data-root><div class="quiet pad">…</div></div></div>';
   const root = el.querySelector('[data-root]');
   let data = null;
   let timer = null;
-  let showInfo = false;
+  const fold = loadFold();
+  const infoOpen = new Set();
   let showAllLocal = false;
+  const geo = new Map(); // 项目 id -> 线路图几何（画线要等量出宽度）
 
   async function load() {
     try {
@@ -28,69 +52,189 @@ export function mount(el, { href, addProject }) {
   }
 
   const P = () => data.projects.filter((p) => p.ready);
-  const projTag = (p) => `<span class="ptag">${esc(p.name)}</span>`;
-  const linkOf = (p, link) => {
-    if (link?.view === 'local') return href(p.id);
-    return href(p.id);
-  };
+  const projTag = (p) => `<span class="ptag">${icon.repo(11)}<span>${esc(p.name)}</span></span>`;
+  const short = (n, k = 26) => (n.length > k ? n.slice(0, k - 1) + '…' : n);
 
-  /* ---------- 需要处理 ---------- */
-  function issues() {
-    const all = [];
-    for (const p of P()) for (const s of p.signals) all.push({ p, s });
-    for (const p of data.projects.filter((x) => !x.ready && x.sync?.status === 'error')) all.push({ p, s: { level: 'critical', title: '云端副本建不起来', detail: p.sync.error } });
-    all.sort((a, b) => LEVEL[a.s.level] - LEVEL[b.s.level]);
-    const important = all.filter((x) => x.s.level !== 'info');
-    const info = all.filter((x) => x.s.level === 'info');
-    const row = ({ p, s }) => `<a class="irow" href="${linkOf(p, s.link)}" data-tip="${esc(s.detail ?? '')}">${levelIcon(s.level, 14)}${projTag(p)}<span class="it">${esc(s.title)}</span>${icon.chevronRight(12)}</a>`;
-    return `<section class="mod">
-      <h2>${icon.alert(14)}<span>需要处理</span><span class="n">${important.length}</span></h2>
-      ${important.map(row).join('') || `<div class="quiet">${levelIcon('good', 14)} 没有要处理的</div>`}
-      ${info.length ? `<button class="more" data-info>${showInfo ? icon.chevronDown(11) : icon.chevronRight(11)}${icon.info(11)}<span>${info.length}</span></button>${showInfo ? info.map(row).join('') : ''}` : ''}
-    </section>`;
-  }
-
-  /* ---------- 项目：主线与环境 ---------- */
-  function projects() {
-    const rows = data.projects.map((p) => {
-      if (!p.ready) return `<a class="prow2 off" href="${href(p.id)}"><span class="pn">${esc(p.name)}</span><span class="quiet">${p.sync?.status === 'error' ? icon.alert(12) : `<span class="spin" style="display:inline-grid">${icon.sync(12)}</span>`}</span></a>`;
-      const t = p.trunk ?? {};
-      const gapDev = p.gaps && p.stages ? devAhead(p) : 0;
-      const railHtml = (name, color) => {
-        if (!name) return '';
-        const envs = p.envs.filter((e) => e.branch === name);
-        return `<span class="mrail" style="--c:${color}"><i></i><b>${esc(name)}</b>${envs.map((e) => envMini(e, color)).join('')}</span>`;
-      };
-      const lv = p.health.critical ? 'critical' : p.health.warning ? 'warning' : null;
-      return `<a class="prow2" href="${href(p.id)}">
-        <span class="pn">${esc(p.name)}${lv ? levelIcon(lv, 12) : ''}</span>
-        <span class="rails2">${railHtml(t.dev, DEV)}${gapDev ? `<span class="gap" data-tip="${esc(`${gapDev} 个提交在 ${t.dev}、还没进 ${t.main}`)}">${icon.arrowRight(10)}${gapDev}</span>` : t.dev ? `<span class="gap ok" data-tip="${esc(`${t.main} 已包含 ${t.dev} 的全部提交`)}">${icon.arrowRight(10)}</span>` : ''}${railHtml(t.main, MAIN)}</span>
-        <span class="pmeta">
-          <span data-tip="活跃分支">${icon.branch(11)}${p.activeBranches}</span>
-          <span class="avs">${p.activePeople.slice(0, 4).map((id) => avatar(p.persons[id], 18)).join('')}</span>
-          <span class="muted" data-tip="${esc(p.latest ? `${p.latest.name ?? ''}：${p.latest.subject}` : '')}">${p.latest ? ago(p.latest.ctime) : ''}</span>
+  /* ================= 项目：一块一个 ================= */
+  function projectBlock(p) {
+    if (!p.ready) {
+      const err = p.sync?.status === 'error';
+      return `<section class="mod pblk off">
+        <div class="phd"><a class="pn" href="${href(p.id)}">${icon.repo(14)}<span>${esc(p.name)}</span></a><span class="grow"></span>
+        <span class="quiet" data-tip="${esc(err ? `云端副本建不起来：${p.sync.error ?? ''}` : '正在建云端副本')}">${err ? levelIcon('critical', 14) : `<span class="spin" style="display:inline-grid">${icon.sync(13)}</span>`}</span></div>
+      </section>`;
+    }
+    const folded = fold.has(p.id);
+    const lv = p.health.critical ? 'critical' : p.health.warning ? 'warning' : null;
+    const t = p.trunk ?? {};
+    const act = p.lanes?.active ?? [];
+    const stat = folded
+      ? `<span class="pstat">
+          <span data-tip="进行中的分支">${icon.branch(11)}${act.length}</span>
+          ${t.dev ? `<span class="${t.ahead ? '' : 'faint'}" data-tip="${esc(`待上线：${t.ahead ?? 0} 个提交在 ${t.dev}、还没进 ${t.main}`)}">${icon.arrowRight(11)}${t.ahead ?? 0}</span>` : ''}
+          ${t.behind ? `<span class="warnc" data-tip="${esc(`没回合：${t.main} 上有 ${t.behind} 个提交不在 ${t.dev}`)}">${icon.arrowLeft(11)}${t.behind}</span>` : ''}
+        </span>`
+      : '';
+    return `<section class="mod pblk${folded ? ' folded' : ''}" data-p="${esc(p.id)}">
+      <div class="phd">
+        <a class="pn" href="${href(p.id)}" data-tip="打开分支图">${icon.repo(14)}<span>${esc(p.name)}</span></a>
+        ${lv ? `<span data-tip="${esc(`${p.health.critical ? p.health.critical + ' 个严重问题 ' : ''}${p.health.warning ? p.health.warning + ' 个需要注意' : ''}`)}">${levelIcon(lv, 13)}</span>` : ''}
+        ${stat}
+        <span class="grow"></span>
+        <span class="avs" data-tip="近 7 天有提交的人">${p.activePeople.slice(0, 5).map((id) => avatar(p.persons[id], 20)).join('')}</span>
+        <span class="muted pt" data-tip="${esc(p.latest ? `${p.latest.name ?? ''}：${p.latest.subject}` : '')}">${p.latest ? ago(p.latest.ctime) : ''}</span>
+        <span class="plinks">
+          <a class="icon-btn" href="${href(p.id)}" data-tip="分支图">${icon.flow(13)}</a>
+          <a class="icon-btn" href="${href(p.id, 'branches')}" data-tip="分支">${icon.branch(13)}</a>
+          <a class="icon-btn" href="${href(p.id, 'people')}" data-tip="成员">${icon.people(13)}</a>
+          ${p.web ? `<a class="icon-btn" href="${esc(p.web)}" target="_blank" rel="noreferrer" data-tip="在 GitHub 打开">${icon.ext(12)}</a>` : ''}
         </span>
-      </a>`;
-    });
-    return `<section class="mod">
-      <h2>${icon.flow(14)}<span>项目</span><span class="n">${data.projects.length}</span><span class="grow"></span><button class="icon-btn" data-add-project data-tip="添加项目">${icon.plus(13)}</button></h2>
-      ${rows.join('')}
+        <button class="icon-btn fold" data-fold="${esc(p.id)}" data-tip="${folded ? '展开' : '收起'}">${folded ? icon.chevronRight(13) : icon.chevronDown(13)}</button>
+      </div>
+      ${folded ? '' : lineMap(p) + decisions(p)}
     </section>`;
   }
-  function devAhead(p) {
-    const i = p.stages.findIndex((s) => s.kind === 'branch' && s.name === p.trunk?.main);
-    if (i <= 0) return 0;
-    const g = p.gaps[i - 1];
-    return g?.pending ?? 0;
-  }
-  function envMini(e, color) {
-    const st = e.state === 'down' ? 'down' : !e.known ? 'unknown' : e.behind ? 'behind' : e.skip ? 'skip' : 'ok';
-    const tip = st === 'down' ? `${e.name}连不上` : st === 'unknown' ? `${e.name}读不出版本` : st === 'behind' ? `${e.name}落后 ${e.branch} ${e.behind} 个提交` : st === 'skip' ? `${e.name}有 ${e.skip} 个提交没经过前一个环境` : `${e.name} = ${e.branch}`;
-    const mark = st === 'ok' ? icon.check(9) : st === 'behind' ? `${icon.arrowDown(9)}${e.behind}` : st === 'skip' || st === 'down' ? icon.alert(9) : '?';
-    return `<span class="emini ${st}" style="--c:${color}" data-tip="${esc(tip)}">${esc(e.name)}<em>${mark}</em></span>`;
+
+  /* ---------- 线路图 ---------- */
+  function lineMap(p) {
+    const t = p.trunk ?? {};
+    const trunk = { main: t.main, dev: t.dev };
+    const act = p.lanes?.active ?? [];
+    const waiting = p.lanes?.waiting ?? [];
+    const shown = act.slice(0, MAX_BRANCHES);
+    const rows = [];
+    for (const b of shown) rows.push({ kind: 'b', b, h: BH });
+    if (act.length > shown.length) rows.push({ kind: 'more', n: act.length - shown.length, h: BH });
+    if (!act.length) rows.push({ kind: 'none', h: BH });
+    if (t.dev) rows.push({ kind: 'rail', key: 'dev', name: t.dev, color: DEV, h: RH });
+    if (t.main) rows.push({ kind: 'rail', key: 'main', name: t.main, color: MAIN, h: RH });
+    let y = 0;
+    for (const r of rows) {
+      r.y = y + (r.kind === 'rail' ? 14 : r.h / 2);
+      y += r.h;
+    }
+    const height = y + 6;
+    const railRows = rows.filter((r) => r.kind === 'rail');
+    const target = railRows[0] ?? null; // 分支汇入的那条（有 dev 就是 dev）
+    const devRow = railRows.find((r) => r.key === 'dev');
+    const mainRow = railRows.find((r) => r.key === 'main');
+    geo.set(p.id, {
+      branches: rows.filter((r) => r.kind === 'b').map((r) => ({ y: r.y, color: branchColor(r.b.name, trunk) })),
+      target: target?.y ?? null,
+      targetColor: target?.color ?? null,
+      dev: devRow?.y ?? null,
+      main: mainRow?.y ?? null,
+      pending: (t.ahead ?? 0) > 0,
+      height,
+    });
+
+    const persons = p.persons;
+    const label = (r) => {
+      if (r.kind === 'b') {
+        const b = r.b;
+        const owner = persons[b.owner];
+        const tip = [b.name, `${owner?.name ?? '?'} · ${ago(b.time)}`, `自己的提交 ${b.own} 个${b.behind ? `；${t.dev ?? t.main} 比它多 ${b.behind} 个` : ''}`, b.unpushed ? `本机还有 ${b.unpushed} 个提交没推送` : '', '点击在分支图里打开'].filter(Boolean).join('\n');
+        return `<a class="ml b" style="height:${r.h}px;--c:${branchColor(b.name, trunk)}" href="${href(p.id, 'graph', { b: b.name })}" data-tip="${esc(tip)}">${avatar(owner, 16)}<span class="nm">${esc(b.name)}</span>${b.pr ? prChip(b.pr, { mini: true }) : ''}${b.unpushed ? `<span class="warnc up">${icon.arrowUp(9)}${b.unpushed}</span>` : ''}</a>`;
+      }
+      if (r.kind === 'more') return `<a class="ml more" style="height:${r.h}px" href="${href(p.id, 'branches')}" data-tip="全部进行中的分支">+${r.n}</a>`;
+      if (r.kind === 'none') return `<span class="ml none faint" style="height:${r.h}px">${icon.check(11)} 没有进行中的分支</span>`;
+      const envs = p.envs.filter((e) => e.branch === r.name);
+      return `<a class="ml rail" style="height:${r.h}px;--c:${r.color}" href="${linkHref(p.id, { view: 'graph', b: r.name })}" data-tip="${esc(`${r.name}：${r.key === 'main' ? '上线分支' : '集成分支'}${envs.length ? `（${envs.map((e) => e.name).join('、')}）` : ''}\n点击看它的详情`)}"><i class="rb"></i><b>${esc(r.name)}</b></a>`;
+    };
+
+    // 轨道上的东西（按百分比放，不用量宽度）
+    const on = [];
+    const stationsFor = (r, from, to) => {
+      const envs = p.envs.filter((e) => e.branch === r.name);
+      envs.forEach((e, i) => {
+        const x = envs.length === 1 ? (from + to) / 2 : from + ((to - from) * i) / (envs.length - 1);
+        on.push(station(p, e, r, x));
+      });
+    };
+    if (devRow) stationsFor(devRow, J1 + 0.08, J1 + 0.18);
+    if (mainRow) stationsFor(mainRow, devRow ? 0.86 : 0.6, devRow ? 0.94 : 0.8);
+    // 已进 dev、还没上线的分支：停在 dev 上的小点
+    if (devRow && waiting.length) {
+      const n = Math.min(waiting.length, 6);
+      const x0 = J1 + 0.27;
+      on.push(`<span class="wait" style="left:${x0 * 100}%;top:${devRow.y}px">${waiting.slice(0, n).map((b) => `<a class="wd" href="${href(p.id, 'graph', { b: b.name })}" style="--c:${branchColor(b.name, trunk)}" data-tip="${esc(`${b.name}\n已进 ${t.dev}、还没进 ${t.main}（等上线）\n${persons[b.owner]?.name ?? ''} · ${ago(b.time)}`)}"></a>`).join('')}${waiting.length > n ? `<a class="wn" href="${href(p.id, 'branches', { f: 'pending' })}" data-tip="已进 ${esc(t.dev)}、等上线的分支">+${waiting.length - n}</a>` : ''}</span>`);
+    }
+    // dev → main 的连线上：待上线、没回合
+    if (devRow && mainRow) {
+      const mid = (devRow.y + mainRow.y) / 2;
+      const a = t.ahead ?? 0;
+      const bk = t.behind ?? 0;
+      const who = (list) => (list ?? []).slice(0, 4).map((x) => `${persons[x.id]?.name ?? '?'} ${x.n}`).join('、');
+      const wait = t.oldest ? Math.floor((Date.now() / 1000 - t.oldest) / DAY) : 0;
+      const pend = a
+        ? `<a class="gapb go${wait >= 7 ? ' old' : ''}" href="${linkHref(p.id, { view: 'graph', b: t.dev, t: 'ahead' })}" data-tip="${esc(`待上线：${a} 个提交在 ${t.dev}、还没进 ${t.main}${t.oldest ? `\n最早一个等了 ${ago(t.oldest).replace('前', '')}` : ''}${t.aheadPeople?.length ? `\n${who(t.aheadPeople)}` : ''}\n点击查看`)}">${icon.arrowDown(10)}${a}${wait ? `<em>${wait}天</em>` : ''}</a>`
+        : `<span class="gapb ok" data-tip="${esc(`${t.main} 已包含 ${t.dev} 的全部提交`)}">${icon.check(10)}</span>`;
+      const back = bk ? `<a class="gapb warn" href="${linkHref(p.id, { view: 'graph', b: t.main, t: 'behind' })}" data-tip="${esc(`没回合：${t.main} 上有 ${bk} 个提交不在 ${t.dev}，要合回 ${t.dev}${t.behindPeople?.length ? `\n${who(t.behindPeople)}` : ''}\n点击查看`)}">${icon.arrowUp(10)}${bk}</a>` : '';
+      on.push(`<span class="gaps" style="left:calc(${J2 * 100}% + 12px);top:${mid}px">${pend}${back}</span>`);
+    }
+    return `<div class="pmap" data-map="${esc(p.id)}">
+      <div class="mls">${rows.map(label).join('')}</div>
+      <div class="trk" style="height:${height}px"><svg class="msvg" height="${height}"></svg>${on.join('')}</div>
+    </div>`;
   }
 
-  /* ---------- 人：跨项目合并同一个人 ---------- */
+  function station(p, e, r, x) {
+    const st = e.state === 'down' ? 'down' : !e.known ? 'unknown' : e.behind ? 'behind' : e.skip ? 'skip' : 'ok';
+    const state = st === 'down' ? '连不上' : st === 'unknown' ? '读不出运行的是哪个提交' : st === 'behind' ? `落后 ${e.branch} ${e.behind} 个提交（${e.branch} 上有、它还没部署的）` : st === 'skip' ? `有 ${e.skip} 个提交没经过前一个环境` : `和 ${e.branch} 一致`;
+    const via = e.via === 'manifest' ? '（版本号靠本机打包清单对到提交）' : e.via === 'tag' ? '（版本号靠标签对到提交）' : e.via === 'field' ? '（接口直接返回提交号）' : '';
+    const run = e.known ? `\n运行 ${e.version ? '版本 ' + e.version + ' → ' : ''}${e.short} ${via}` : '';
+    const mark = st === 'ok' ? icon.check(9) : st === 'behind' ? `${icon.arrowDown(9)}${e.behind}` : st === 'skip' || st === 'down' ? icon.alert(9) : '?';
+    const go = e.id ? linkHref(p.id, { view: 'graph', env: e.id }) : e.sha ? linkHref(p.id, { view: 'graph', c: e.sha }) : linkHref(p.id, { view: 'settings' });
+    return `<a class="stn ${st}" href="${go}" style="left:${x * 100}%;top:${r.y}px;--c:${r.color}" data-tip="${esc(`环境「${e.name}」：${state}${run}\n点击看这个环境`)}"><i>${icon.server(9)}</i><span>${esc(e.name)}<em>${mark}</em></span></a>`;
+  }
+
+  /** 量出每张线路图的宽度，画轨道和汇入线。 */
+  function paintMaps() {
+    for (const box of root.querySelectorAll('[data-map]')) {
+      const g = geo.get(box.dataset.map);
+      const svg = box.querySelector('.msvg');
+      if (!g || !svg) continue;
+      const W = box.querySelector('.trk').clientWidth;
+      if (!W) continue;
+      svg.setAttribute('width', W);
+      const r = 8;
+      let out = '';
+      const path = (d, color, w, extra = '') => (out += `<path d="${d}" fill="none" stroke="${color}" stroke-width="${w}" stroke-linecap="round"${extra}/>`);
+      // 主线：main 贯穿到底；dev 到 J2 转下去汇入 main（有待上线的是虚线）
+      if (g.main != null) path(`M0 ${g.main}H${W}`, MAIN, 5);
+      if (g.dev != null) {
+        const x2 = Math.round(W * J2);
+        path(`M0 ${g.dev}H${x2 - r}`, DEV, 5);
+        if (g.main != null) path(`M${x2 - r} ${g.dev}Q${x2} ${g.dev} ${x2} ${g.dev + r}V${g.main - r}Q${x2} ${g.main} ${x2 + r} ${g.main}`, DEV, 2.5, g.pending ? ' stroke-dasharray="3 4"' : ' opacity=".35"');
+      }
+      // 分支：从左边走到 J1，转下去（虚线 = 还没合进去）指向要汇入的主线；越靠上的越晚转，线不交叉
+      const n = g.branches.length;
+      g.branches.forEach((b, i) => {
+        const x1 = Math.round(W * J1) + (n - 1 - i) * 8;
+        path(`M6 ${b.y}H${x1 - r}Q${x1} ${b.y} ${x1} ${b.y + r}`, b.color, 2.5);
+        if (g.target != null) path(`M${x1} ${b.y + r}V${g.target - 7}`, b.color, 2, ' stroke-dasharray="2 3"');
+        out += `<circle cx="6" cy="${b.y}" r="3.5" fill="${b.color}"/>`;
+        if (g.target != null) out += `<path d="M${x1 - 3} ${g.target - 9}L${x1} ${g.target - 5}L${x1 + 3} ${g.target - 9}" fill="none" stroke="${b.color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`;
+      });
+      svg.innerHTML = out;
+    }
+  }
+
+  /* ---------- 决策：这个项目要处理的问题 ---------- */
+  function decisions(p) {
+    const sig = [...p.signals].sort((a, b) => LEVEL[a.level] - LEVEL[b.level]);
+    const imp = sig.filter((s) => s.level !== 'info');
+    const info = sig.filter((s) => s.level === 'info');
+    if (!imp.length && !info.length) return '';
+    const open = infoOpen.has(p.id);
+    const row = (s) => `<a class="dec ${s.level}" href="${linkHref(p.id, s.link)}" data-tip="${esc(s.detail ?? '')}">${levelIcon(s.level, 13)}<span class="it">${esc(s.title)}</span>${icon.chevronRight(11)}</a>`;
+    return `<div class="decs">
+      ${imp.map(row).join('')}
+      ${info.length ? `<button class="more" data-info="${esc(p.id)}" data-tip="提示">${open ? icon.chevronDown(11) : icon.chevronRight(11)}${icon.info(11)}<span>${info.length}</span></button>${open ? info.map(row).join('') : ''}` : ''}
+    </div>`;
+  }
+
+  /* ================= 成员：跨项目合并同一个人 ================= */
   function people() {
     const by = new Map();
     for (const p of P()) {
@@ -110,7 +254,7 @@ export function mount(el, { href, addProject }) {
     }
     const list = [...by.values()].filter((x) => x.d7 || x.branches.length).sort((a, b) => b.last - a.last);
     return `<section class="mod">
-      <h2>${icon.people(14)}<span>人</span><span class="n">${list.length}</span></h2>
+      <h2><span>成员</span><span class="tag">Members</span><span class="n">${list.length}</span></h2>
       ${list.map((x) => `<a class="urow" href="${href(x.home.p.id, 'people', {}, x.home.id)}">
         ${avatar(x, 28)}
         <span class="un"><b>${esc(x.name)}</b><span class="muted">${ago(x.last)}</span></span>
@@ -119,9 +263,8 @@ export function mount(el, { href, addProject }) {
       </a>`).join('') || '<div class="quiet">最近没有人提交</div>'}
     </section>`;
   }
-  const short = (n) => (n.length > 26 ? n.slice(0, 25) + '…' : n);
 
-  /* ---------- 本机 ---------- */
+  /* ================= 本机 ================= */
   function local() {
     const rows = [];
     for (const p of P()) {
@@ -129,31 +272,51 @@ export function mount(el, { href, addProject }) {
       for (const c of p.dirty) rows.push(`<a class="lrow2" href="${href(p.id)}" data-tip="${esc(`${c.name}：${c.total} 个文件改了没提交`)}">${projTag(p)}<span class="muted">${icon.desktop(11)} ${esc(c.name)}</span><span class="muted">${icon.pencil(10)}${c.total}</span></a>`);
     }
     return `<section class="mod">
-      <h2>${icon.desktop(14)}<span>本机</span><span class="n">${rows.length}</span></h2>
+      <h2><span>本机</span><span class="tag">Local</span><span class="n">${rows.length}</span></h2>
       ${(showAllLocal ? rows : rows.slice(0, 10)).join('') || `<div class="quiet">${levelIcon('good', 14)} 都推送了</div>`}
       ${rows.length > 10 ? `<button class="more" data-all-local>${showAllLocal ? icon.chevronDown(11) : icon.chevronRight(11)}<span>${showAllLocal ? '' : '+' + (rows.length - 10)}</span></button>` : ''}
     </section>`;
   }
 
   function draw() {
-    root.innerHTML = `<div class="bcol">${issues()}${projects()}</div><div class="bcol side">${local()}${people()}</div>`;
+    const ready = P();
+    const hot = ready.reduce((n, p) => n + p.signals.filter((s) => s.level !== 'info').length, 0);
+    const branches = ready.reduce((n, p) => n + (p.lanes?.active.length ?? 0), 0);
+    const ahead = ready.reduce((n, p) => n + (p.trunk?.ahead ?? 0), 0);
+    const failed = data.projects.filter((p) => !p.ready && p.sync?.status === 'error').length;
+    geo.clear();
+    root.innerHTML = `<div class="ptitle"><h1>看板</h1><p>${data.projects.length} 个项目 · ${branches} 条分支在做 · ${ahead} 个提交待上线 · ${hot + failed ? `${hot + failed} 件需要处理` : '都正常'}</p></div>
+      <div class="bcol">
+        ${data.projects.map(projectBlock).join('') || `<section class="mod"><div class="quiet pad">还没有项目</div></section>`}
+        <button class="addpj" data-add-project>${icon.plus(13)}<span>添加项目</span></button>
+      </div>
+      <div class="bcol">${local()}${people()}</div>`;
+    paintMaps();
   }
 
   root.addEventListener('click', (e) => {
-    if (e.target.closest('[data-add-project]')) {
-      addProject?.();
-      return;
+    if (e.target.closest('[data-add-project]')) return addProject?.();
+    const f = e.target.closest('[data-fold]');
+    if (f) {
+      const id = f.dataset.fold;
+      fold.has(id) ? fold.delete(id) : fold.add(id);
+      saveFold(fold);
+      return draw();
     }
-    if (e.target.closest('[data-info]')) {
-      e.preventDefault();
-      showInfo = !showInfo;
-      draw();
-    } else if (e.target.closest('[data-all-local]')) {
+    const inf = e.target.closest('[data-info]');
+    if (inf) {
+      const id = inf.dataset.info;
+      infoOpen.has(id) ? infoOpen.delete(id) : infoOpen.add(id);
+      return draw();
+    }
+    if (e.target.closest('[data-all-local]')) {
       showAllLocal = !showAllLocal;
       draw();
     }
   });
 
+  const ro = new ResizeObserver(() => data && paintMaps());
+  ro.observe(root);
   load();
   const tick = setInterval(() => data && draw(), 60000);
   return {
@@ -161,9 +324,13 @@ export function mount(el, { href, addProject }) {
       clearTimeout(timer);
       timer = setTimeout(load, 800);
     },
+    theme() {
+      paintMaps();
+    },
     unmount() {
       clearTimeout(timer);
       clearInterval(tick);
+      ro.disconnect();
     },
   };
 }
