@@ -66,13 +66,13 @@ export function mount(el, ctx) {
       <div class="mhead" style="--pc:${person.color ?? 'var(--other)'}">${avatar(person, 56)}
         <div><h1>${esc(p.name)}</h1><div class="muted">${(p.names ?? []).filter((n) => n !== p.name).map(esc).join(' · ')}</div></div>
         <span class="grow"></span>
+        <span class="mh14" data-tip="近 14 天每天的提交">${bars(p.d14, 32)}</span>
         <div class="mstats big">
           <span data-tip="近 7 天的提交">${icon.commit(14)}${p.d7}</span>
           <span data-tip="近 7 天进了 ${esc(o.stages[0]?.name ?? '主线')} 的提交">${icon.arrowDown(14)}${p.landed}</span>
           <span data-tip="最近一次提交">${icon.clock(14)}${ago(p.last)}</span>
         </div>
       </div>
-      ${bars(p.d14, 36)}
       <div class="mcols">
         <section>
           <h4 class="sub-h">${icon.branch(12)} ${bs.length}</h4>
@@ -87,7 +87,7 @@ export function mount(el, ctx) {
   }
 
   const render = () => {
-    // 详情页整页用这个人的颜色（头部底色、节奏柱）
+    // 详情页用这个人的颜色（头像外圈、节奏柱），不铺底色
     const color = pid != null ? ctx.overview.persons[pid]?.color : null;
     if (color) root.style.setProperty('--pc', color);
     else root.style.removeProperty('--pc');

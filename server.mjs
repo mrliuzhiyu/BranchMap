@@ -88,6 +88,13 @@ const routes = [
     ws.reorder(body.order, here);
     return { ok: true };
   }],
+  // 设置里的「测试探测地址」：只读 GET 一次，返回读到了什么
+  ['POST', P('/probe-test'), async (p, q, m, res, req) => {
+    const body = await readBody(req);
+    const url = String(body?.url ?? '').trim();
+    if (!/^https?:\/\/\S+$/i.test(url)) throw Object.assign(new Error('探测地址要以 http:// 或 https:// 开头'), { status: 400 });
+    return p.testProbe(url);
+  }],
   ['POST', P('/remove'), (p) => {
     ws.removeProject(p.id, here);
     return { ok: true };

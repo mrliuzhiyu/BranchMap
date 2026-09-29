@@ -34,7 +34,7 @@ function saveFold(s) {
 }
 
 export function mount(el, { href, addProject, linkHref }) {
-  el.innerHTML = '<div class="page"><div class="board" data-root><div class="quiet pad">…</div></div></div>';
+  el.innerHTML = `<div class="page"><div class="board" data-root><div class="quiet pad"><span class="spin" style="display:inline-grid">${icon.sync(16)}</span></div></div></div>`;
   const root = el.querySelector('[data-root]');
   let data = null;
   let timer = null;
@@ -181,12 +181,14 @@ export function mount(el, { href, addProject, linkHref }) {
 
   function station(p, e, r, x) {
     const st = e.state === 'down' ? 'down' : !e.known ? 'unknown' : e.behind ? 'behind' : e.skip ? 'skip' : 'ok';
-    const state = st === 'down' ? '连不上' : st === 'unknown' ? '读不出运行的是哪个提交' : st === 'behind' ? `落后 ${e.branch} ${e.behind} 个提交（${e.branch} 上有、它还没部署的）` : st === 'skip' ? `有 ${e.skip} 个提交没经过前一个环境` : `和 ${e.branch} 一致`;
+    const state = st === 'down' ? `连不上${e.detail ? `：${e.detail}` : ''}` : st === 'unknown' ? (e.probe ? `在线，但读不出运行的是哪个提交：${e.detail ?? '接口没有返回提交号'}` : '没填探测地址，不知道线上跑的是哪个提交') : st === 'behind' ? `落后 ${e.branch} ${e.behind} 个提交（${e.branch} 上有、它还没部署的）` : st === 'skip' ? `有 ${e.skip} 个提交没经过前一个环境` : `和 ${e.branch} 一致`;
     const via = e.via === 'manifest' ? '（版本号靠本机打包清单对到提交）' : e.via === 'tag' ? '（版本号靠标签对到提交）' : e.via === 'field' ? '（接口直接返回提交号）' : '';
     const run = e.known ? `\n运行 ${e.version ? '版本 ' + e.version + ' → ' : ''}${e.short} ${via}` : '';
     const mark = st === 'ok' ? icon.check(9) : st === 'behind' ? `${icon.arrowDown(9)}${e.behind}` : st === 'skip' || st === 'down' ? icon.alert(9) : '?';
-    const go = e.id ? linkHref(p.id, { view: 'graph', env: e.id }) : e.sha ? linkHref(p.id, { view: 'graph', c: e.sha }) : linkHref(p.id, { view: 'settings' });
-    return `<a class="stn ${st}" href="${go}" style="left:${x * 100}%;top:${r.y}px;--c:${r.color}" data-tip="${esc(`环境「${e.name}」：${state}${run}\n点击看这个环境`)}"><i>${icon.server(9)}</i><span>${esc(e.name)}<em>${mark}</em></span></a>`;
+    // 读不出提交 / 连不上的：点了直接去设置里测试探测地址；读得出的：看这个环境的详情
+    const fix = st === 'unknown' || st === 'down';
+    const go = fix ? linkHref(p.id, { view: 'settings' }) : e.id ? linkHref(p.id, { view: 'graph', env: e.id }) : linkHref(p.id, { view: 'graph', c: e.sha });
+    return `<a class="stn ${st}" href="${go}" style="left:${x * 100}%;top:${r.y}px;--c:${r.color}" data-tip="${esc(`环境「${e.name}」：${state}${run}\n${fix ? '点击去设置里测试探测地址' : '点击看这个环境'}`)}"><i>${icon.server(9)}</i><span>${esc(e.name)}<em>${mark}</em></span></a>`;
   }
 
   /** 量出每张线路图的宽度，画轨道和汇入线。 */

@@ -38,15 +38,53 @@ export function openSettings({ id, name, model }) {
   document.body.append(wrap);
   const $ = (s) => wrap.querySelector(s);
 
+  const tests = new Map(); // 环境下标 -> 测试结果（或 'running'）
   const drawEnvs = () => {
-    $('[data-envs]').innerHTML = envs.map((e, i) => `<div class="erow" data-i="${i}">
+    $('[data-envs]').innerHTML = envs.map((e, i) => `<div class="ewrap"><div class="erow" data-i="${i}">
       <label class="field">${icon.server(13)}<input data-f="name" value="${esc(e.name)}" placeholder="生产" maxlength="20"></label>
       <select class="sselect" data-f="branch" data-tip="从哪条分支部署">${names.map((n) => `<option value="${esc(n)}" ${n === e.branch ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
       <label class="field"><input data-f="probe" value="${esc(e.probe ?? '')}" placeholder="https://…/health（可选）" spellcheck="false"></label>
+      <button class="icon-btn" data-test data-tip="测试探测地址：发一次只读请求，看能不能读出线上跑的提交">${tests.get(i) === 'running' ? `<span class="spin" style="display:inline-grid">${icon.sync(13)}</span>` : icon.pulse(13)}</button>
       <button class="icon-btn" data-del data-tip="删除这个环境">${icon.close(13)}</button>
-    </div>`).join('') || '<div class="quiet">还没有环境</div>';
+    </div>${testHtml(tests.get(i))}</div>`).join('') || '<div class="quiet">还没有环境</div>';
   };
+
+  /** 测试结果：状态一行（读到的提交或读不出的原因）+ 接口返回的内容；读不出时说明服务该返回什么 */
+  function testHtml(r) {
+    if (!r || r === 'running') return '';
+    if (r.failed) return `<div class="etest bad">${icon.xCircle(13)}<span>${esc(r.failed)}</span></div>`;
+    const ok = r.state === 'up' && r.commit;
+    const head = r.state !== 'up'
+      ? `${icon.xCircle(13)}<span>连不上：${esc(r.error ?? r.detail ?? '')}</span>`
+      : ok
+        ? `${icon.checkCircle(13)}<span>读到提交 <b class="mono">${esc(r.short)}</b>${r.subject ? ` ${esc(r.subject)}` : ''}${r.version ? `（版本 ${esc(r.version)}）` : ''}${r.inRepo === false ? '，但云端副本里还没有这个提交' : ''}</span>`
+        : `${icon.alert(13)}<span>在线，但读不出提交：${esc(r.detail ?? '接口没有返回提交号')}</span>`;
+    let sample = r.sample ?? '';
+    try {
+      sample = JSON.stringify(JSON.parse(sample), null, 2);
+    } catch { /* 不是 JSON，原样显示 */ }
+    if (sample.length > 1200) sample = sample.slice(0, 1200) + ' …';
+    return `<div class="etest ${ok ? 'ok' : r.state === 'up' ? 'warn' : 'bad'}">
+      <div class="et1">${head}<span class="grow"></span><span class="muted">${r.http ? `HTTP ${r.http}` : ''}${r.latency != null ? ` · ${r.latency} ms` : ''}</span></div>
+      ${!ok && r.state === 'up' ? `<p class="muted">要读出线上跑的版本，服务的这个接口需要返回提交号，比如 <code>{"commit": "&lt;git sha&gt;"}</code>（commit、sha、gitSha、revision 这些字段名都认）。BranchMap 只读这个接口，不会改服务。</p>` : ''}
+      ${sample ? `<pre class="etj">${esc(sample)}</pre>` : ''}
+    </div>`;
+  }
+  async function runTest(i) {
+    const url = envs[i]?.probe?.trim();
+    if (!url) return toast('先填探测地址');
+    tests.set(i, 'running');
+    drawEnvs();
+    try {
+      tests.set(i, await request(`/api/p/${encodeURIComponent(id)}/probe-test`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url }) }));
+    } catch (err) {
+      tests.set(i, { failed: err.message });
+    }
+    if (wrap.isConnected) drawEnvs();
+  }
   drawEnvs();
+  // 打开设置就把填了地址的环境都测一遍：哪个读不出、为什么，一眼看到
+  envs.forEach((e, i) => e.probe && runTest(i));
   const sync = () => {
     wrap.querySelectorAll('.erow').forEach((row) => {
       const e = envs[Number(row.dataset.i)];
@@ -81,7 +119,14 @@ export function openSettings({ id, name, model }) {
     if (del) {
       sync();
       envs.splice(Number(del.closest('.erow').dataset.i), 1);
+      tests.clear();
       drawEnvs();
+      return;
+    }
+    const test = e.target.closest('[data-test]');
+    if (test) {
+      sync();
+      runTest(Number(test.closest('.erow').dataset.i));
       return;
     }
     if (e.target.closest('[data-save]')) {

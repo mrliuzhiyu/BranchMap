@@ -4,7 +4,7 @@
 //   #/p/<项目>/people        成员卡片
 //   #/p/<项目>/people/<人>   一个人的详情
 // 服务端的数据一变就推过来，当前页面就地刷新。
-import { $, esc, icon, ago, stamp, picker, toast, closePop, worst, levelIcon, avatar } from './lib/util.js';
+import { $, esc, icon, ago, stamp, picker, toast, closePop, worst, levelIcon, avatar, hideTip } from './lib/util.js';
 import { listProjects, storeFor, connectEvents, onServerChange, request } from './lib/api.js';
 import { closeChanges } from './lib/changes.js';
 import { openAddProject } from './lib/addproject.js';
@@ -77,13 +77,20 @@ function renderSide() {
     if (!groups.has(g)) groups.set(g, []);
     groups.get(g).push(p);
   }
-  const nav = (v, ic, label, url, on) => `<a class="nv" href="${url}" ${on ? 'aria-current="page"' : ''}>${icon[ic](15)}<span>${label}</span></a>`;
+  // 在看板（没进项目）时，这几个入口去的是上次看的项目：悬停写明是哪个
+  const curName = list.find((p) => p.id === cur)?.name ?? cur;
+  // 收起时只剩图标：名字都放进悬停提示
+  const mini = document.documentElement.classList.contains('side-mini');
+  const nav = (v, ic, label, url, on) => {
+    const tip = v !== 'board' && !route.id ? `${curName} 的${label}` : mini ? label : '';
+    return `<a class="nv" href="${url}" ${on ? 'aria-current="page"' : ''}${tip ? ` data-tip="${esc(tip)}"` : ''}>${icon[ic](15)}<span>${label}</span></a>`;
+  };
   const item = (p) => {
     const lv = !p.ready ? (p.sync?.status === 'error' ? 'critical' : 'busy') : worst(p.health);
     const tip = !p.ready ? (p.sync?.status === 'error' ? '云端副本建不起来' : '正在建云端副本') : lv === 'critical' ? `${p.health.critical} 个严重问题` : lv === 'warning' ? `${p.health.warning} 个需要注意` : '';
     const target = route.id ? href(p.id, route.view === 'people' || route.view === 'branches' ? route.view : 'graph') : href(p.id);
-    return `<div class="pj${p.id === cur ? ' on' : ''}" data-pj="${esc(p.id)}" data-group="${esc(p.group ?? '')}">
-      <a href="${target}"><span class="ri">${icon.repo(13)}</span><span class="nm">${esc(p.name)}</span>${lv === 'critical' || lv === 'warning' || lv === 'busy' ? `<i class="sd ${lv}" data-tip="${esc(tip)}"></i>` : ''}${p.ready && p.inFlight ? `<span class="ct" data-tip="在途的工作">${p.inFlight}</span>` : ''}</a>
+    return `<div class="pj${p.id === route.id ? ' on' : ''}" data-pj="${esc(p.id)}" data-group="${esc(p.group ?? '')}">
+      <a href="${target}"${mini ? ` data-tip="${esc(p.name + (tip ? '\n' + tip : ''))}"` : ''}><span class="ri">${icon.repo(13)}</span><span class="pini">${esc([...p.name][0]?.toUpperCase() ?? '?')}</span><span class="nm">${esc(p.name)}</span>${lv === 'critical' || lv === 'warning' || lv === 'busy' ? `<i class="sd ${lv}" data-tip="${esc(tip)}"></i>` : ''}${p.ready && p.inFlight ? `<span class="ct" data-tip="在途的工作">${p.inFlight}</span>` : ''}</a>
       <button class="pm" data-pmenu="${esc(p.id)}" data-pop-anchor data-tip="更多">${icon.kebab(13)}</button>
     </div>`;
   };
@@ -91,7 +98,7 @@ function renderSide() {
   const keep = $('#side .pjs')?.scrollTop ?? 0; // 重画不丢项目列表的滚动位置
   $('#side').innerHTML = `
     <a class="logo" href="#/">${icon.logo(22)}<b>BranchMap</b></a>
-    <button class="sbs" data-search data-pop-anchor>${icon.search(14)}<span>搜索项目</span><kbd>Ctrl K</kbd></button>
+    <button class="sbs" data-search data-pop-anchor${mini ? ' data-tip="搜索项目 (Ctrl K)"' : ''}>${icon.search(14)}<span>搜索项目</span><kbd>Ctrl K</kbd></button>
     <p class="lab">浏览</p>
     <nav class="nvs">
       ${nav('board', 'home', '看板', '#/', route.view === 'board')}
@@ -110,6 +117,7 @@ function renderSide() {
         <span class="mnm"><b>${esc(me?.name ?? '本机')}</b>${me?.login ? `<span>@${esc(me.login)}</span>` : ''}</span>
       </button>
       <button class="icon-btn" data-theme data-tip="深色 / 浅色">${document.documentElement.dataset.theme === 'dark' ? icon.sun(14) : icon.moon(14)}</button>
+      <button class="icon-btn" data-side-mini data-tip="${mini ? '展开侧栏' : '收起侧栏'}">${icon.sidebar(14)}</button>
     </div>`;
   $('#side .pjs').scrollTop = keep;
 }
@@ -229,7 +237,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 document.addEventListener('click', async (e) => {
-  const t = e.target.closest('#side [data-add], #top [data-add], #top [data-settings], #side [data-search], #side [data-theme], #side [data-me], #side [data-pmenu], #top [data-sync], #top [data-health]');
+  const t = e.target.closest('#side [data-add], #top [data-add], #top [data-settings], #side [data-search], #side [data-theme], #side [data-side-mini], #side [data-me], #side [data-pmenu], #top [data-sync], #top [data-health]');
   if (!t) return;
   const route = parse();
   if (t.dataset.add !== undefined) addProject();
@@ -248,7 +256,15 @@ document.addEventListener('click', async (e) => {
     location.hash = href(id, 'people', {}, pid);
   }
   else if (t.dataset.search !== undefined) openSwitch(t);
-  else if (t.dataset.theme !== undefined) {
+  else if (t.dataset.sideMini !== undefined) {
+    // 收起 / 展开侧栏，记在浏览器里
+    const on = document.documentElement.classList.toggle('side-mini');
+    try {
+      localStorage.setItem('bm-side-mini', on ? '1' : '');
+    } catch { /* 无痕模式 */ }
+    hideTip();
+    renderSide();
+  } else if (t.dataset.theme !== undefined) {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = next;
     try {

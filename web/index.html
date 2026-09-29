@@ -9,6 +9,8 @@
   // 主题：先读本机记住的选择，没有就用浅色
   try {
     document.documentElement.dataset.theme = localStorage.getItem('bm-theme') || 'light';
+    // 侧栏收起了没有（先定好，免得打开时闪一下）
+    if (localStorage.getItem('bm-side-mini')) document.documentElement.classList.add('side-mini');
   } catch { document.documentElement.dataset.theme = 'light'; }
 </script>
 <link rel="stylesheet" href="style.css">

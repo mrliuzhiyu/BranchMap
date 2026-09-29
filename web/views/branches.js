@@ -168,7 +168,7 @@ export function mount(el, ctx) {
         }).join('') || `<div class="quiet pad">${icon.check(14)} 没有符合的分支</div>`}
       </div>`;
     // 表头每列左边的分界都能拖：往右拖 = 这一列变窄、分支名那列变宽（列宽记在浏览器里，所有项目共用）
-    const DEF = [0, 130, 92, 88, 76, 64];
+    const DEF = [0, 130, 92, 88, 76, 84];
     for (const h of root.querySelectorAll('.bl-h [data-col]')) {
       const i = Number(h.dataset.col);
       resizer(h, { target: root, prop: `--bc${i}`, key: `branches-col${i}`, min: 40, max: 360, dir: -1, def: DEF[i] });

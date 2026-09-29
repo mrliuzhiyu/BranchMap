@@ -1,8 +1,8 @@
-// 颜色跟着「东西」走，任何页面都一样：main 蓝、dev 橙、每条分支按名字固定一种颜色、合并完的历史灰。
+// 颜色跟着「东西」走，任何页面都一样：main 蓝、dev 橙、每条分支按名字固定一种颜色（12 种里选）。
 export const MAIN = 'var(--s1)';
 export const DEV = 'var(--s2)';
 export const HIST = 'var(--hist)';
-const PALETTE = ['var(--s3)', 'var(--s4)', 'var(--s5)', 'var(--s7)', 'var(--s8)', 'var(--s6)'];
+const PALETTE = Array.from({ length: 12 }, (_, i) => `var(--b${i})`); // 12 种分支色（style.css 里的 --b0…--b11）
 
 function hash(s) {
   let h = 2166136261;
