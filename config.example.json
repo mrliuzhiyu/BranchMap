@@ -1,4 +1,30 @@
 {
-  "root": "C:\\Users\\you\\Projects",
-  "port": 4317
+  "scan": ["C:\\Users\\you\\Projects"],
+  "people": {
+    "显示名": ["Git 名字 1", "Git 名字 2"]
+  },
+  "projects": [
+    {
+      "remote": "https://github.com/your-org/your-service.git",
+      "name": "服务",
+      "group": "服务端",
+      "description": "一句话说明",
+      "environments": [
+        { "name": "测试", "branch": "dev", "url": "https://test.example.com", "probe": { "url": "https://test.api.example.com/health", "commit": "commit" } },
+        { "name": "生产", "branch": "main", "url": "https://example.com", "probe": { "url": "https://api.example.com/health", "commit": "commit" } }
+      ]
+    },
+    {
+      "remote": "https://github.com/your-org/your-desktop-app.git",
+      "name": "客户端",
+      "group": "客户端",
+      "environments": [
+        {
+          "name": "正式渠道", "branch": "main", "kind": "channel",
+          "probe": { "url": "https://api.example.com/releases/latest", "version": "version" },
+          "resolve": [{ "tag": "app-{version}" }, { "manifest": "release/production/{version}/*/*.json", "field": "commit" }]
+        }
+      ]
+    }
+  ]
 }

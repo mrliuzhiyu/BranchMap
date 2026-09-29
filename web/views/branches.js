@@ -80,7 +80,7 @@ export function mount(el, ctx) {
       for (const r of list) html += branchRow(r);
     }
     body.innerHTML = `<section class="block"><table class="tbl">
-      <thead><tr><th>分支</th><th>负责人</th><th>最后提交</th>${dev ? `<th data-tip="相对 ${esc(dev)}：↑ 分支比 ${esc(dev)} 多的提交 · ↓ ${esc(dev)} 比分支多的提交">对 ${esc(dev)}</th>` : ''}${prod ? `<th data-tip="相对 ${esc(prod)}">对 ${esc(prod)}</th>` : ''}<th>合并进度</th><th>本地 / 远程</th><th>PR</th><th></th></tr></thead>
+      <thead><tr><th>分支</th><th>负责人</th><th>最后提交</th>${dev ? `<th data-tip="相对 ${esc(dev)}：↑ 分支比 ${esc(dev)} 多的提交 · ↓ ${esc(dev)} 比分支多的提交">对 ${esc(dev)}</th>` : ''}${prod ? `<th data-tip="相对 ${esc(prod)}">对 ${esc(prod)}</th>` : ''}<th>合并进度</th><th data-tip="本机同名分支和云端比">本机</th><th>PR</th><th></th></tr></thead>
       <tbody>${html || '<tr><td colspan="9"><div class="empty">没有匹配的分支</div></td></tr>'}</tbody></table></section>`;
   }
   function branchRow(r) {
@@ -95,12 +95,14 @@ export function mount(el, ctx) {
     else if (r.mergedProd) progress = `<span class="pill good">${icon.check(11)}进 ${esc(M.trunk.prod)} ${stamp(r.mergedProd.time)}</span>`;
     else if (r.mergedDev) progress = `<span class="pill accent">进 ${esc(M.trunk.dev)} ${stamp(r.mergedDev.time)}</span>`;
     else if (M.baseB) progress = `<span class="muted">未合并</span>`;
-    let sync;
-    if (B.local && B.remote) {
-      const s = M.syncState(B);
-      sync = s ? `<span data-tip="本地比 ${esc(B.remote.name)}：↑ 未推送 · ↓ 未拉取">${aheadBehind(s.ahead, s.behind)}</span>` : `<span class="muted">${icon.check(11)} 一致</span>`;
-    } else if (B.local) sync = '<span class="pill warn">仅本地</span>';
-    else sync = `<span class="muted">${icon.cloud(11)} 仅远程</span>`;
+    // 本机：同名的本地分支和云端比（来自本机扫描）
+    const lb = (ctx.overview.local?.branches ?? []).filter((x) => x.name === B.name);
+    let sync = '<span class="faint">—</span>';
+    if (lb.length) {
+      const up = Math.max(0, ...lb.map((x) => x.unpushed ?? 0));
+      const down = Math.max(0, ...lb.map((x) => x.behind ?? 0));
+      sync = up || down ? `<span data-tip="本机的 ${esc(B.name)} 比云端：↑ 没推送 · ↓ 没拉取">${aheadBehind(up, down)}</span>` : `<span class="muted" data-tip="本机的 ${esc(B.name)} 和云端一致">${icon.check(11)} 一致</span>`;
+    }
     const rel = (x, name) => (x ? aheadBehind(x.ahead, x.behind, { title: `比 ${name} 多 ${x.ahead} 个提交、少 ${x.behind} 个` }) : '');
     return `<tr class="click" data-cmp="${esc(base)}...${esc(B.name)}">
       <td style="max-width:380px"><div class="row">${B.name === M.head ? `<span class="pill accent" data-tip="当前检出">${icon.check(11)}</span>` : ''}<span class="mono ell" style="font-size:12px" title="${esc(B.name)}">${esc(B.name)}</span>${wts.length ? `<span class="muted" data-tip="${esc('在工作树检出：' + wts.map((w) => w.path).join('，'))}">${icon.folder(12)}</span>` : ''}</div></td>
@@ -149,7 +151,6 @@ export function mount(el, ctx) {
     const items = [];
     for (const r of M.analyze().rows) items.push({ value: r.name, label: r.name, group: r.status === 'trunk' ? '主线' : '分支', hint: when(r.time) });
     for (const t of M.tags) items.push({ value: t.name, label: t.name, group: '标签', hint: when(t.date) });
-    for (const r of M.refs) if (r.kind === 'R') items.push({ value: r.name, label: r.name, group: '远程分支（原样）', hint: when(M.ct[r.c]) });
     return items;
   }
   function renderCompare() {

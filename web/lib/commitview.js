@@ -12,6 +12,13 @@ export function commitChangesLoader(store, base, to) {
   };
 }
 
+/** 不经过提交图，直接打开一个提交的差异抽屉。 */
+export async function openCommitDiff(store, sha, { subject = '', sub = '' } = {}) {
+  const d = await store.commit(sha);
+  const title = subject || d.message.split('\n')[0];
+  openChanges({ title, sub: sub || `${d.h.slice(0, 7)} · ${esc(d.author.name)} · ${stamp(d.author.time)}${d.parents.length > 1 ? ' · 合并提交（对比第一父）' : ''}`, files: d.files, ...commitChangesLoader(store, d.base, d.h) });
+}
+
 /** 画进 el；onNavigate(hash) 用于点父/子提交跳转。返回一个取消函数。 */
 export function renderCommit(el, { store, model: M, c, onNavigate, href }) {
   const hash = M.h[c];
@@ -59,6 +66,11 @@ export function renderCommit(el, { store, model: M, c, onNavigate, href }) {
       <dl class="kv">
         ${entered(inDev, M.trunk.dev)}
         ${entered(inProd, M.trunk.prod)}
+        ${(M.raw.envs ?? []).map((e) => {
+          const at = e.commit ? M.byHash.get(e.commit) : undefined;
+          if (at === undefined) return `<dt>${esc(e.name)}</dt><dd><span class="pill quiet">读不出${esc(e.name)}的版本</span></dd>`;
+          return `<dt>${esc(e.name)}</dt><dd>${M.isAncestor(c, at) ? `<span class="pill good">${icon.check(11)}<span>已部署</span></span>` : '<span class="pill quiet">还没部署</span>'}<span class="muted">运行 <span class="sha-link" data-nav="${M.h[at]}">${M.short(at)}</span></span></dd>`;
+        }).join('')}
         <dt>首次发布</dt><dd>${firstTag ? `<span class="pill">${icon.tag(11)}<span>${esc(firstTag.name)}</span></span><span class="muted">${stamp(firstTag.date)}</span>` : '<span class="muted">还没有标签包含它</span>'}</dd>
         <dt>所在分支</dt><dd>${brs.length ? brs.slice(0, BR_LIMIT).map((B) => `<a class="pill" href="${href('branches', { tab: 'compare', cmp: `${M.baseB && M.baseB !== B ? M.baseB.name : ''}...${B.name}` })}">${icon.branch(11)}<span>${esc(B.name)}</span></a>`).join('') + (brs.length > BR_LIMIT ? `<span class="muted">等 ${brs.length} 条</span>` : '') : '<span class="muted">没有分支指向它的后代（游离提交）</span>'}</dd>
       </dl>

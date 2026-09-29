@@ -1,128 +1,107 @@
-// 成员：左边所有人（按最近活跃排），右边一个人在这个仓库里的情况——
-// 手上在做的分支（相对 dev / main 差多少）、最近合进去的工作、每周提交、最近的提交、常改的文件。
-import { esc, icon, avatar, ago, stamp, when, num, aheadBehind, DAY, nowSec, weekStart } from '../lib/util.js';
-import { sparkBars, columns } from '../lib/charts.js';
+// 成员页：每人一张卡——手上在做什么（每件走到了哪一站）、名下的分支、最近 14 天的节奏、刚上线的东西。
+// AI 代理（Claude、Codex 这类作者）和最近不活跃的人放在后面折叠起来。
+import { esc, icon, avatar, ago, when, fullStamp, debounce, nowSec } from '../lib/util.js';
+import { track } from '../lib/flowui.js';
+import { openCommitDiff } from '../lib/commitview.js';
 
-const STATUS_LABEL = { active: '进行中', stale: '停滞', pending: '待上线', released: '已上线', none: '无独有提交' };
+const STATUS = {
+  active: { label: '进行中', cls: 'accent' },
+  stale: { label: '停滞', cls: 'warn' },
+  merged: { label: '已合并', cls: '' },
+  released: { label: '已上线', cls: 'good' },
+};
 
 export function mount(el, ctx) {
-  const { model: M, store } = ctx;
-  const stats = M.peopleStats().filter((s) => s.commits.length).sort((x, y) => y.last - x.last);
-  let sel = ctx.params.has('p') ? Number(ctx.params.get('p')) : stats[0]?.p.id;
-  let q = '';
+  let q = ctx.params.get('q') || '';
+  let focus = ctx.params.has('p') ? Number(ctx.params.get('p')) : null;
+  let showQuiet = false;
 
-  el.innerHTML = `<div class="people-page">
-    <section class="block">
-      <div class="block-h"><h2>${icon.people(14)}成员</h2><span class="sub">${stats.length} 人 · 按最近活跃</span></div>
-      <div style="padding:8px 10px;border-bottom:1px solid var(--line)"><label class="input">${icon.search(13)}<input data-q placeholder="搜名字"></label></div>
-      <div class="plist" data-list></div>
-    </section>
-    <div class="pdetail" data-detail></div>
-  </div>`;
-  const listEl = el.querySelector('[data-list]');
-  const detail = el.querySelector('[data-detail]');
+  el.innerHTML = '<div class="page" data-scroll><div class="page-narrow" data-root></div></div>';
+  const scroller = el.querySelector('[data-scroll]');
+  const root = el.querySelector('[data-root]');
 
-  function drawList() {
-    const ql = q.toLowerCase();
-    listEl.innerHTML = stats.filter((s) => !ql || s.p.name.toLowerCase().includes(ql) || s.p.names.some((n) => n.toLowerCase().includes(ql))).map((s) => {
-      const active = s.branches.filter((r) => r.status === 'active').length;
-      return `<button class="pitem" data-p="${s.p.id}" aria-selected="${s.p.id === sel}">
-        ${avatar(s.p, 28)}
-        <span style="min-width:0"><span class="n1 ell" style="display:block">${esc(s.p.name)}</span><span class="n2">${ago(s.last)} · 近 30 天 ${s.d30} 个提交${active ? ` · ${active} 条进行中` : ''}</span></span>
-        ${sparkBars(s.weeks.slice(-12), { w: 60, h: 18, color: s.p.color, title: '近 12 周每周提交' })}
-      </button>`;
-    }).join('') || '<div class="empty">没有匹配的人</div>';
+  function render() {
+    const o = ctx.overview;
+    const last = o.doneSeg;
+    const itemsBy = new Map(o.items.map((it) => [it.key, it]));
+    const ql = q.trim().toLowerCase();
+    const match = (p) => !ql || [p.name, ...(p.names ?? [])].some((n) => n.toLowerCase().includes(ql));
+    const people = o.people.filter(match);
+    const recentCut = nowSec() - 7 * 86400;
+    const busy = people.filter((p) => !p.bot && (p.last >= recentCut || p.branches.length || p.items.some((k) => (itemsBy.get(k)?.seg ?? last) < last)));
+    const quiet = people.filter((p) => !busy.includes(p));
+
+    root.innerHTML = `
+      <div class="phdr"><h1>成员</h1><span class="desc">${busy.length} 人最近在动${quiet.length ? ` · ${quiet.length} 位不活跃或是 AI 代理` : ''}</span><span class="grow"></span>
+        <label class="input" style="width:220px">${icon.search(13)}<input data-q placeholder="找人" value="${esc(q)}"></label></div>
+      <div class="people-grid">${busy.map((p) => card(o, p, itemsBy, last)).join('') || '<div class="empty">没有匹配的人</div>'}</div>
+      ${quiet.length ? `<div class="fold-h">${icon.people(13)}不活跃 / AI 代理 · ${quiet.length}<button class="btn sm ghost" data-quiet>${showQuiet ? '收起' : '展开'}</button></div>${showQuiet ? `<div class="people-grid">${quiet.map((p) => card(o, p, itemsBy, last)).join('')}</div>` : ''}` : ''}`;
+    if (focus != null) {
+      const c = root.querySelector(`[data-person="${focus}"]`);
+      if (c) requestAnimationFrame(() => c.scrollIntoView({ block: 'center' }));
+    }
   }
 
-  function drawDetail() {
-    const s = stats.find((x) => x.p.id === sel);
-    if (!s) { detail.innerHTML = '<div class="empty">选一个人</div>'; return; }
-    const p = s.p;
-    const now = nowSec();
-    const working = s.branches.filter((r) => r.status === 'active' || r.status === 'stale').sort((x, y) => y.time - x.time);
-    const recentMerged = s.branches.filter((r) => (r.status === 'pending' || r.status === 'released') && now - (r.mergedDev?.time ?? r.mergedProd?.time ?? 0) <= 30 * DAY)
-      .sort((x, y) => (y.mergedDev?.time ?? y.mergedProd?.time) - (x.mergedDev?.time ?? x.mergedProd?.time));
-    const base = M.baseB?.name;
-    const branchRow = (r) => {
-      const pr = M.prOf(r);
-      const merged = r.mergedProd ? `进 ${esc(M.trunk.prod)} ${stamp(r.mergedProd.time)}` : r.mergedDev ? `进 ${esc(M.trunk.dev)} ${stamp(r.mergedDev.time)}` : '';
-      return `<tr class="click" data-href="${ctx.href('branches', { tab: 'compare', cmp: `${base ?? ''}...${r.name}` })}">
-        <td style="max-width:360px"><span class="mono ell" style="font-size:12px;display:block" title="${esc(r.name)}">${esc(r.name)}</span></td>
-        <td><span class="pill ${r.status === 'active' ? 'accent' : r.status === 'released' ? 'good' : ''}">${STATUS_LABEL[r.status]}</span></td>
-        ${M.trunk.dev ? `<td>${r.rd ? aheadBehind(r.rd.ahead, r.rd.behind, { title: `相对 ${M.trunk.dev}` }) : ''}</td>` : ''}
-        ${M.trunk.prod ? `<td>${r.rp ? aheadBehind(r.rp.ahead, r.rp.behind, { title: `相对 ${M.trunk.prod}` }) : ''}</td>` : ''}
-        <td>${pr ? `<span class="pr ${pr.state}" data-tip="${esc(pr.title)}">#${pr.n}</span>` : ''}</td>
-        <td class="muted">${merged || when(r.time)}</td></tr>`;
-    };
-    const head = `<tr><th>分支</th><th>状态</th>${M.trunk.dev ? `<th>对 ${esc(M.trunk.dev)}</th>` : ''}${M.trunk.prod ? `<th>对 ${esc(M.trunk.prod)}</th>` : ''}<th>PR</th><th>时间</th></tr>`;
-    const recent = s.commits.slice(0, 20);
-    const thisWeek = weekStart(now);
-    const weeks = s.weeks.map((_, i) => thisWeek - (s.weeks.length - 1 - i) * 7 * DAY);
-
-    detail.innerHTML = `
-      <section class="block">
-        <div class="phead">${avatar(p, 56)}<div style="min-width:0"><h2>${esc(p.name)}</h2>
-          <div class="muted" style="font-size:12px;margin-top:2px">${p.names.length > 1 ? `也叫 ${p.names.filter((n) => n !== p.name).map(esc).join('、')} · ` : ''}${p.emails.map(esc).join('、')}</div>
-          ${p.login ? `<a class="link" style="font-size:12px" href="https://github.com/${esc(p.login)}" target="_blank" rel="noreferrer">@${esc(p.login)} ${icon.ext(11)}</a>` : ''}</div>
-          <span class="grow"></span><a class="btn sm" href="${ctx.href('graph', { a: p.id })}">${icon.commit(13)}在提交图里高亮</a></div>
-        <div class="block-b" style="border-top:1px solid var(--line)"><div class="tiles">
-          <div class="tile"><div class="k">最近活跃</div><div class="v" style="font-size:18px">${ago(s.last)}</div><div class="d">${stamp(s.last)}</div></div>
-          <div class="tile"><div class="k">近 7 天</div><div class="v">${s.d7}<small>个提交</small></div><div class="d">近 30 天 ${s.d30} 个</div></div>
-          <div class="tile"><div class="k">手上的分支</div><div class="v">${working.filter((r) => r.status === 'active').length}<small>条进行中</small></div><div class="d">${working.filter((r) => r.status === 'stale').length} 条停滞</div></div>
-          <div class="tile"><div class="k">全部提交</div><div class="v">${num(s.commits.length)}</div><div class="d">从 ${stamp(M.t[s.commits.at(-1)])} 起</div></div>
-        </div></div>
-      </section>
-      <section class="block"><div class="block-h"><h2>${icon.branch(14)}手上的分支</h2><span class="sub">还没合进 ${esc(base ?? '主线')} 的</span></div>
-        ${working.length ? `<table class="tbl"><thead>${head}</thead><tbody>${working.map(branchRow).join('')}</tbody></table>` : '<div class="empty">没有进行中的分支</div>'}</section>
-      <section class="block"><div class="block-h"><h2>${icon.merge(14)}近 30 天合进去的</h2><span class="sub">${recentMerged.length} 条分支</span></div>
-        ${recentMerged.length ? `<table class="tbl"><thead>${head}</thead><tbody>${recentMerged.map(branchRow).join('')}</tbody></table>` : '<div class="empty">近 30 天没有合并</div>'}</section>
-      <section class="block"><div class="block-h"><h2>每周提交</h2><span class="sub">近 ${s.weeks.length} 周 · 含合并提交</span></div><div class="block-b"><div class="chart" data-weeks></div></div></section>
-      <div class="grid g2">
-        <section class="block"><div class="block-h"><h2>${icon.commit(14)}最近的提交</h2></div><div class="clist" style="max-height:none">${recent.map((c) => `<a class="citem" href="${ctx.href('graph', { c: M.h[c] })}"><span class="muted mono" style="font-size:11.5px">${M.short(c)}</span><span class="s">${esc(M.s[c])}</span><span class="muted" style="font-size:12px">${when(M.t[c])}</span></a>`).join('')}</div></section>
-        <section class="block"><div class="block-h"><h2>${icon.file(14)}常改的文件</h2><span class="sub">全部历史</span></div><div data-files><div class="loading">统计中…</div></div></section>
-      </div>`;
-    columns(detail.querySelector('[data-weeks]'), { labels: weeks, series: [{ name: p.name, color: p.color, values: s.weeks }], height: 160, xFmt: (t) => { const d = new Date(t * 1000); return `${d.getMonth() + 1}/${d.getDate()}`; }, tipTitle: (i) => `${stamp(weeks[i]).split(' ')[0]} 这一周`, unit: ' 个' });
-    const my = sel;
-    store.stats(null).then((st) => {
-      if (my !== sel) return;
-      const files = st.personFiles[p.id] ?? [];
-      const box = detail.querySelector('[data-files]');
-      const max = files[0]?.[1] ?? 1;
-      box.innerHTML = files.length ? `<table class="tbl"><tbody>${files.map(([f, n]) => `<tr class="click" data-file="${esc(f)}"><td class="mono ell" style="font-size:12px;max-width:340px" title="${esc(f)}">${esc(f)}</td><td style="width:140px"><div class="hbar" style="grid-template-columns:minmax(0,1fr) 36px"><span class="track" style="width:${(n / max) * 100}%;background:${p.color}"></span><span class="num">${n}</span></div></td></tr>`).join('')}</tbody></table>` : '<div class="empty">没有数据</div>';
-    }).catch((e) => {
-      const box = detail.querySelector('[data-files]');
-      if (box) box.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
-    });
+  function card(o, p, itemsBy, last) {
+    const person = o.persons[p.id];
+    const items = p.items.map((k) => itemsBy.get(k)).filter(Boolean);
+    const doing = items.filter((it) => it.seg < last || !last).sort((x, y) => y.last - x.last);
+    const shipped = items.filter((it) => last && it.seg === last).sort((x, y) => y.last - x.last);
+    const branches = o.branches.filter((b) => p.branches.includes(b.name));
+    const max = Math.max(1, ...p.d14);
+    const bars = p.d14.map((v, i) => `<i class="${v ? '' : 'z'}" style="height:${v ? Math.max(3, Math.round((v / max) * 22)) : 2}px" data-tip="${esc(`${i === 13 ? '今天' : 13 - i + ' 天前'}：${v} 个提交`)}"></i>`).join('');
+    const aliases = (p.names ?? []).filter((n) => n !== p.name);
+    const itemRow = (it) => `<button class="prow" data-item="${esc(it.key)}" data-sha="${it.commits[0].sha}" data-subject="${esc(it.commits[0].s)}">${track(o.stages, it.counts, it.count)}<span class="s">${it.ticket ? `<span class="key ticket">${esc(it.ticket)}</span>` : it.prs[0] ? `<span class="key">#${it.prs[0].n}</span>` : ''}<span title="${esc(it.title)}">${esc(it.title)}</span></span><span class="muted" style="font-size:12px;white-space:nowrap">${when(it.last)}</span></button>`;
+    return `<section class="block person${focus === p.id ? ' focus' : ''}" data-person="${p.id}">
+      <div class="person-h">${avatar(person, 36)}
+        <div style="min-width:0"><div class="nm">${esc(p.name)}${p.bot ? ' <span class="pill quiet">AI 代理</span>' : ''}</div>
+          <div class="sub">${ago(p.last)}活跃 · 近 7 天 ${p.d7} 个提交${p.landed ? ` · ${p.landed} 个进了 ${esc(o.stages[0]?.name ?? '主线')}` : ''}${aliases.length ? ` · 也叫 ${esc(aliases.join('、'))}` : ''}</div></div>
+        <span class="grow"></span><span class="bars14" data-tip="近 14 天每天的提交">${bars}</span></div>
+      <div class="psec"><h4>在做 · ${doing.length}</h4>${doing.length ? doing.slice(0, 8).map(itemRow).join('') + (doing.length > 8 ? `<a class="prow muted" href="${ctx.href('flow', { who: p.id })}">还有 ${doing.length - 8} 件，在流水线里看全部${icon.chevronRight(11)}</a>` : '') : '<div class="muted" style="padding:2px 16px 6px;font-size:12px">没有在途的工作</div>'}</div>
+      ${branches.length ? `<div class="psec"><h4>名下的分支 · ${branches.length}</h4>${branches.slice(0, 8).map((b) => `<a class="prow" href="${ctx.href('branches', { tab: 'compare', cmp: `${o.stages[0]?.name ?? ''}...${b.name}` })}">
+          <span class="pill ${STATUS[b.status].cls}"><span>${STATUS[b.status].label}</span></span>
+          <span class="s"><span class="mono" style="font-size:12px" title="${esc(b.name)}">${esc(b.name)}</span>${b.pr ? `<span class="pr ${b.pr.state}">#${b.pr.n}</span>` : ''}</span>
+          <span class="muted" style="font-size:12px;white-space:nowrap" data-tip="${esc(`自己的提交 ${b.own} 个；${o.stages[0]?.name ?? '主线'} 比它多 ${b.behind ?? 0} 个；最后提交 ${fullStamp(b.time)}`)}"><span class="ab"><span class="up">↑${b.own}</span> <span class="${b.behind ? 'down' : 'zero'}">↓${b.behind ?? 0}</span></span> · ${when(b.time)}</span></a>`).join('')}</div>` : ''}
+      ${shipped.length ? `<div class="psec"><h4>${esc(o.segments.find((x) => x.seg === last)?.label ?? '最近上线')} · ${shipped.length}</h4>${shipped.slice(0, 4).map(itemRow).join('')}</div>` : ''}
+    </section>`;
   }
 
-  el.addEventListener('click', (e) => {
-    if (e.target.closest('a')) return;
-    const t = e.target.closest('[data-p],[data-href],[data-file]');
+  root.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-quiet],[data-item]');
     if (!t) return;
-    if (t.dataset.p) {
-      sel = Number(t.dataset.p);
-      ctx.setParams({ p: sel }, { replace: false });
-      listEl.querySelectorAll('[data-p]').forEach((b) => b.setAttribute('aria-selected', String(Number(b.dataset.p) === sel)));
-      drawDetail();
-      detail.scrollTop = 0;
-    } else if (t.dataset.href) location.hash = t.dataset.href.slice(1);
-    else if (t.dataset.file) location.hash = ctx.href('files', { ref: M.head || M.trunk.dev || M.trunk.prod, path: t.dataset.file, v: 'history' }).slice(1);
+    if (t.dataset.quiet !== undefined) {
+      showQuiet = !showQuiet;
+      render();
+    } else if (t.dataset.item) {
+      openCommitDiff(ctx.store, t.dataset.sha, { subject: t.dataset.subject }).catch((err) => alert(err.message));
+    }
   });
-  const qi = el.querySelector('[data-q]');
-  qi.addEventListener('input', () => { q = qi.value.trim(); drawList(); });
+  root.addEventListener('input', debounce((e) => {
+    if (!e.target.matches('[data-q]')) return;
+    q = e.target.value;
+    focus = null;
+    ctx.setParams({ q, p: null });
+    render();
+    const inp = root.querySelector('[data-q]');
+    inp.focus();
+    inp.setSelectionRange(inp.value.length, inp.value.length);
+  }, 200));
 
-  drawList();
-  drawDetail();
-  const off = store.on((what) => { if (what === 'prs') drawDetail(); });
+  render();
   return {
     update(params) {
-      if (params.has('p') && Number(params.get('p')) !== sel) {
-        sel = Number(params.get('p'));
-        drawList();
-        drawDetail();
-      }
+      q = params.get('q') || '';
+      focus = params.has('p') ? Number(params.get('p')) : null;
+      render();
     },
-    theme() { drawDetail(); },
-    unmount() { off(); },
+    refresh() {
+      const top = scroller.scrollTop;
+      const f = focus;
+      focus = null;
+      render();
+      focus = f;
+      scroller.scrollTop = top;
+    },
   };
 }
+

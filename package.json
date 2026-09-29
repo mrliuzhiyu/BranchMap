@@ -1,8 +1,8 @@
 {
   "name": "branch-map",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "本机 Git 可视化：提交图、分支对比、文件与统计（只读）",
+  "description": "项目流水线可视化：每个人的进度、合并进度、各环境部署进度与健康（只读）",
   "type": "module",
   "scripts": {
     "start": "node server.mjs --open",

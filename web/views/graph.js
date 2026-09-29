@@ -20,7 +20,6 @@ function readState(p) {
     author: p.has('a') ? Number(p.get('a')) : null,
     q: p.get('q') || '',
     fp: p.get('fp') === '1',
-    remotes: p.get('rm') !== '0',
     tags: p.get('tg') !== '0',
   };
 }
@@ -50,10 +49,9 @@ export function mount(el, ctx) {
       <button class="icon-btn" data-qnext title="下一个匹配 (Enter)">${icon.chevronDown(13)}</button>
       <span class="sep"></span>
       <label class="check" data-tip="只沿第一父走：隐藏被合并进来的分支内部提交，只留主干"><input type="checkbox" data-opt="fp">仅第一父</label>
-      <label class="check"><input type="checkbox" data-opt="remotes">远程分支</label>
       <label class="check"><input type="checkbox" data-opt="tags">标签</label>
       <span class="grow"></span>
-      <span class="lane-legend">${M.prodB ? `<button class="link-quiet" data-jump="prod" data-tip="跳到 ${esc(M.trunk.prod)} 的最新提交"><i style="background:var(--s1)"></i>${esc(M.trunk.prod)}</button>` : ''}${M.devB ? `<button class="link-quiet" data-jump="dev" data-tip="跳到 ${esc(M.trunk.dev)} 的最新提交"><i style="background:var(--s2)"></i>${esc(M.trunk.dev)}</button>` : ''}<span data-count class="num"></span></span>
+      <span class="lane-legend">${M.prodB ? `<button class="link-quiet" data-jump="prod" data-tip="跳到 ${esc(M.trunk.prod)} 的最新提交"><i style="background:var(--s1)"></i>${esc(M.trunk.prod)}</button>` : ''}${M.devB ? `<button class="link-quiet" data-jump="dev" data-tip="跳到 ${esc(M.trunk.dev)} 的最新提交"><i style="background:var(--s2)"></i>${esc(M.trunk.dev)}</button>` : ''}${(M.raw.envs ?? []).filter((e) => e.commit && M.byHash.has(e.commit)).map((e) => `<button class="link-quiet" data-jump-env="${esc(e.commit)}" data-tip="跳到${esc(e.name)}正在运行的提交">${icon.server(11)}&nbsp;${esc(e.name)}</button>`).join('')}<span data-count class="num"></span></span>
     </div>
     <div class="graph-split" style="--detail-w:${detailW}px">
       <div class="glist" tabindex="0">
@@ -67,6 +65,14 @@ export function mount(el, ctx) {
   const list = el.querySelector('.glist');
   const body = el.querySelector('.gbody');
   const detail = el.querySelector('.detail');
+  // 各环境正在运行的提交
+  const envAt = new Map();
+  for (const e of M.raw.envs ?? []) {
+    const c = e.commit ? M.byHash.get(e.commit) : undefined;
+    if (c === undefined) continue;
+    if (!envAt.has(c)) envAt.set(c, []);
+    envAt.get(c).push(e);
+  }
   const qInput = el.querySelector('[data-q]');
 
   /* ---------- 计算：哪些提交可见、怎么排泳道 ---------- */
@@ -169,29 +175,27 @@ export function mount(el, ctx) {
     const lc = color >= 0 ? `lane-${color}` : '';
     const items = [];
     const seen = new Set();
+    // 环境：正在运行这个提交的环境排在最前面
+    for (const e of envAt.get(c) ?? []) {
+      items.push({ order: -1, html: `<span class="ref env" data-tip="${esc(`${e.name}正在运行这个提交${e.version ? '（版本 ' + e.version + '）' : ''}`)}">${icon.server(11)}<span>${esc(e.name)}</span></span>` });
+    }
     for (const r of refs ?? []) {
       if (r.kind === 'T') continue;
       const name = r.kind === 'L' ? r.name : r.remote === 'origin' ? r.short : r.name;
       if (seen.has(name)) continue;
       const B = M.branches.get(name);
       if (!B) continue;
-      const localHere = B.local?.c === c;
-      const remoteHere = B.remote?.c === c;
-      if (!localHere && !S.remotes) continue;
       seen.add(name);
-      const head = localHere && name === M.head;
-      const others = M.worktrees.filter((w) => !w.main && w.branch === name);
+      const here = M.worktrees.filter((w) => w.branch === name);
       const pr = M.prByHead?.get(name);
       const prOpen = pr && (pr.state === 'OPEN' || pr.state === 'DRAFT') ? pr : null;
       const tip = [
-        localHere && remoteHere ? `${name}（本地与 ${B.remote.name} 一致）` : localHere ? `${name}（本地${B.remote ? `；${B.remote.name} 在别处` : '，没有推送到远程'}）` : `${B.remote.name}（远程${B.local ? `；本地 ${name} 在别处` : '，本地没有'}）`,
-        head ? '当前检出' : '',
-        others.length ? '在工作树检出：' + others.map((w) => w.path).join('，') : '',
+        `云端分支 ${name}`,
+        here.length ? '本机检出在：' + here.map((w) => w.path).join('，') : '',
         prOpen ? `PR #${prOpen.n} ${prOpen.title}` : '',
       ].filter(Boolean).join('\n');
-      const label = localHere ? name : B.remote.name;
-      const order = name === M.head ? 0 : name === M.trunk.prod ? 1 : name === M.trunk.dev ? 2 : 3;
-      items.push({ order, html: `<span class="ref ${lc}${head ? ' head' : ''}${!localHere ? ' remote-only' : ''}" data-tip="${esc(tip)}">${localHere ? icon.branch(11) : ''}${remoteHere ? icon.cloud(11) : ''}<span>${esc(label)}</span>${prOpen ? `<span class="pr ${prOpen.state}">#${prOpen.n}</span>` : ''}${others.length ? icon.folder(10) : ''}</span>` });
+      const order = name === M.trunk.prod ? 1 : name === M.trunk.dev ? 2 : 3;
+      items.push({ order, html: `<span class="ref ${lc}${order < 3 ? ' head' : ''}" data-tip="${esc(tip)}">${icon.branch(11)}<span>${esc(name)}</span>${prOpen ? `<span class="pr ${prOpen.state}">#${prOpen.n}</span>` : ''}${here.length ? icon.folder(10) : ''}</span>` });
     }
     if (S.tags) for (const r of refs ?? []) if (r.kind === 'T') items.push({ order: 4, html: `<span class="ref tag" data-tip="${esc(r.name + (r.msg ? '：' + r.msg : ''))}">${icon.tag(11)}<span>${esc(r.name)}</span></span>` });
     items.sort((a, b) => a.order - b.order);
@@ -365,7 +369,7 @@ export function mount(el, ctx) {
     el.querySelectorAll('[data-preset]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.preset === preset)));
   }
   function persist() {
-    ctx.setParams({ b: S.branches.join(','), a: S.author, q: S.q, fp: S.fp ? 1 : null, rm: S.remotes ? null : 0, tg: S.tags ? null : 0 });
+    ctx.setParams({ b: S.branches.join(','), a: S.author, q: S.q, fp: S.fp ? 1 : null, tg: S.tags ? null : 0 });
   }
   function refilter({ keepSel = true } = {}) {
     const selId = selRow >= 0 ? V.order[selRow] : null;
@@ -379,8 +383,14 @@ export function mount(el, ctx) {
     else paint(true);
   }
   el.querySelector('.toolbar').addEventListener('click', (e) => {
-    const t = e.target.closest('[data-branches],[data-preset],[data-author],[data-qprev],[data-qnext],[data-jump]');
+    const t = e.target.closest('[data-branches],[data-preset],[data-author],[data-qprev],[data-qnext],[data-jump],[data-jump-env]');
     if (!t) return;
+    if (t.dataset.jumpEnv) {
+      const r = V.rowOf.get(M.byHash.get(t.dataset.jumpEnv));
+      if (r === undefined) toast('当前筛选下看不到它');
+      else select(r, { center: true, push: true });
+      return;
+    }
     if (t.dataset.jump) {
       const tip = t.dataset.jump === 'prod' ? M.prodTip : M.devTip;
       const r = V.rowOf.get(tip);
@@ -398,8 +408,8 @@ export function mount(el, ctx) {
       const items = [];
       const a = M.analyze();
       for (const r of a.rows) {
-        const g = r.status === 'trunk' ? '主线' : r.B.local ? '本地分支' : '仅远程';
-        items.push({ value: r.name, label: r.name, group: g, hint: when(r.time), sort: g === '主线' ? 0 : g === '本地分支' ? 1 : 2 });
+        const g = r.status === 'trunk' ? '主线' : '分支';
+        items.push({ value: r.name, label: r.name, group: g, hint: when(r.time), sort: g === '主线' ? 0 : 1 });
       }
       items.sort((x, y) => x.sort - y.sort);
       for (const t2 of M.tags) items.push({ value: t2.name, label: t2.name, group: '标签', hint: when(t2.date) });
@@ -473,6 +483,16 @@ export function mount(el, ctx) {
       else paint(true);
     },
     theme() { paint(true); },
+    // 云端有新提交：不打断正在看的图，给一个按钮让用户自己刷新
+    stale() {
+      if (el.querySelector('[data-stale]')) return;
+      const bar = document.createElement('button');
+      bar.className = 'btn sm primary';
+      bar.dataset.stale = '';
+      bar.innerHTML = `${icon.sync(12)}云端有新提交，点击刷新`;
+      bar.onclick = () => ctx.reload();
+      el.querySelector('.toolbar').append(bar);
+    },
     unmount() {
       ro.disconnect();
       off();
@@ -492,6 +512,6 @@ export function openWorktreeChanges(store, w, index, path) {
     files,
     select: path,
     groups: group,
-    load: (f, opts) => store.wtdiff({ wt: index, path: f.p, old: f.old, untracked: f.st === 'U', ctx: opts.ctx, ws: opts.ws }),
+    load: (f, opts) => store.wtdiff({ wt: w.id, path: f.p, old: f.old, untracked: f.st === 'U', ctx: opts.ctx, ws: opts.ws }),
   });
 }
