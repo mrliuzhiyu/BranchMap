@@ -10,7 +10,7 @@ import { MAIN, DEV, branchColor } from '../lib/colors.js';
 
 const LEVEL = { critical: 0, warning: 1, info: 2 };
 
-export function mount(el, { href }) {
+export function mount(el, { href, addProject }) {
   el.innerHTML = '<div class="page"><div class="board" data-root><div class="quiet pad">…</div></div></div>';
   const root = el.querySelector('[data-root]');
   let data = null;
@@ -73,7 +73,7 @@ export function mount(el, { href }) {
       </a>`;
     });
     return `<section class="mod">
-      <h2>${icon.flow(14)}<span>项目</span><span class="n">${data.projects.length}</span></h2>
+      <h2>${icon.flow(14)}<span>项目</span><span class="n">${data.projects.length}</span><span class="grow"></span><button class="icon-btn" data-add-project data-tip="添加项目">${icon.plus(13)}</button></h2>
       ${rows.join('')}
     </section>`;
   }
@@ -140,6 +140,10 @@ export function mount(el, { href }) {
   }
 
   root.addEventListener('click', (e) => {
+    if (e.target.closest('[data-add-project]')) {
+      addProject?.();
+      return;
+    }
     if (e.target.closest('[data-info]')) {
       e.preventDefault();
       showInfo = !showInfo;

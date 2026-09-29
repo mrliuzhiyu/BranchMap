@@ -26,16 +26,17 @@ export function mount(el, ctx) {
     const card = (p) => {
       const person = o.persons[p.id];
       const bs = o.branches.filter((b) => p.branches.includes(b.name));
-      const last = o.branches.filter((b) => b.owner === p.id).sort((x, y) => y.time - x.time)[0];
-      return `<a class="mcard" href="${ctx.href('people', {}, p.id)}">
-        <div class="mtop">${avatar(person, 40)}<div class="mn"><b>${esc(p.name)}</b><span class="muted" data-tip="${fullStamp(p.last)}">${ago(p.last)}</span></div></div>
+      return `<a class="mcard" href="${ctx.href('people', {}, p.id)}" style="--pc:${person?.color ?? 'var(--other)'}">
+        <div class="mtop">${avatar(person, 40)}<div class="mn"><b>${esc(p.name)}</b><span data-tip="${fullStamp(p.last)}">${ago(p.last)}</span></div>${p.d7 ? '' : `<span class="idle" data-tip="近 7 天没有提交">${icon.clock(12)}</span>`}</div>
+        <div class="mbody">
         ${bars(p.d14)}
         <div class="mstats">
           <span data-tip="近 7 天的提交">${icon.commit(12)}${p.d7}</span>
           <span data-tip="手上的分支">${icon.branch(12)}${bs.length}</span>
           <span data-tip="在途的工作">${icon.flow(12)}${p.items.length}</span>
         </div>
-        <div class="mbs">${bs.slice(0, 3).map((b) => `<span class="bpill" style="--c:${branchColor(b.name, trunk())}" data-tip="${esc(b.name)}"><i></i>${esc(b.name.length > 28 ? b.name.slice(0, 27) + '…' : b.name)}</span>`).join('')}${bs.length > 3 ? `<span class="muted">+${bs.length - 3}</span>` : ''}${!bs.length && last ? '' : ''}</div>
+        <div class="mbs">${bs.slice(0, 3).map((b) => `<span class="bpill" style="--c:${branchColor(b.name, trunk())}" data-tip="${esc(b.name)}"><i></i>${esc(b.name.length > 28 ? b.name.slice(0, 27) + '…' : b.name)}</span>`).join('')}${bs.length > 3 ? `<span class="muted">+${bs.length - 3}</span>` : ''}</div>
+        </div>
       </a>`;
     };
     root.innerHTML = `
@@ -62,7 +63,7 @@ export function mount(el, ctx) {
     const statusIcon = (b) => (b.status === 'stale' ? `<span data-tip="超过 30 天没动">${icon.clock(12)}</span>` : b.status === 'merged' || b.status === 'released' ? `<span data-tip="已合进主线">${icon.check(12)}</span>` : `<span class="muted" data-tip="自己的提交">+${b.own}</span>`);
     root.innerHTML = `
       <a class="back" href="${ctx.href('people')}">${icon.arrowLeft(13)}<span>成员</span></a>
-      <div class="mhead">${avatar(person, 56)}
+      <div class="mhead" style="--pc:${person.color ?? 'var(--other)'}">${avatar(person, 56)}
         <div><h1>${esc(p.name)}</h1><div class="muted">${(p.names ?? []).filter((n) => n !== p.name).map(esc).join(' · ')}</div></div>
         <span class="grow"></span>
         <div class="mstats big">
@@ -85,7 +86,13 @@ export function mount(el, ctx) {
       </div>`;
   }
 
-  const render = () => (pid != null ? detail() : cards());
+  const render = () => {
+    // 详情页整页用这个人的颜色（头部底色、节奏柱）
+    const color = pid != null ? ctx.overview.persons[pid]?.color : null;
+    if (color) root.style.setProperty('--pc', color);
+    else root.style.removeProperty('--pc');
+    return pid != null ? detail() : cards();
+  };
   render();
   return {
     update(params, sub) {

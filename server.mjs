@@ -42,6 +42,19 @@ const routes = [
   ['GET', /^\/api\/board$/, async () => ({
     projects: await Promise.all(ws.list().map((p) => p.board())),
   })],
+  // 项目化：候选仓库、添加、移除
+  ['GET', /^\/api\/discovered$/, () => ws.discovered()],
+  ['POST', /^\/api\/projects$/, async (p, q, m, res, req) => {
+    const body = await readBody(req);
+    const remote = String(body?.remote ?? '').trim();
+    if (!remote) throw Object.assign(new Error('填一个仓库地址'), { status: 400 });
+    const id = ws.addProject({ remote, name: String(body.name ?? '').trim().slice(0, 40), group: String(body.group ?? '').trim().slice(0, 20) }, here);
+    return { ok: true, id };
+  }],
+  ['POST', P('/remove'), (p) => {
+    ws.removeProject(p.id, here);
+    return { ok: true };
+  }],
   ['GET', P('/overview'), (p) => p.snapshot()],
   ['GET', P('/graph'), (p) => p.graphData()],
   ['GET', P('/worktrees'), (p) => (p.local?.checkouts ?? []).filter((c) => !c.missing)],
@@ -188,10 +201,14 @@ const server = http.createServer(async (req, res) => {
     return serveStatic(url.pathname, res);
   }
   const started = Date.now();
+  let wrongMethod = false;
   for (const [method, re, handler] of routes) {
     const m = re.exec(url.pathname);
     if (!m) continue;
-    if (req.method !== method) return send(res, 405, { error: '方法不对' });
+    if (req.method !== method) {
+      wrongMethod = true;
+      continue;
+    }
     try {
       let project = null;
       if (re.source.startsWith('^\\/api\\/p\\/')) {
@@ -209,7 +226,7 @@ const server = http.createServer(async (req, res) => {
     }
     return;
   }
-  send(res, 404, { error: '没有这个接口' });
+  send(res, wrongMethod ? 405 : 404, { error: wrongMethod ? '方法不对' : '没有这个接口' });
 });
 
 server.on('error', (e) => {
