@@ -38,6 +38,10 @@ const routes = [
     unmatched: ws.scanner.unmatched.map((r) => r.name),
     configured: cfg.projects.length,
   })],
+  // 看板：所有项目要处理的问题、各项目主线与环境、谁在忙、本机没推送的
+  ['GET', /^\/api\/board$/, async () => ({
+    projects: await Promise.all(ws.list().map((p) => p.board())),
+  })],
   ['GET', P('/overview'), (p) => p.snapshot()],
   ['GET', P('/graph'), (p) => p.graphData()],
   ['GET', P('/worktrees'), (p) => (p.local?.checkouts ?? []).filter((c) => !c.missing)],
@@ -55,11 +59,44 @@ const routes = [
     await Promise.all([p.probeEnvs(), p.refreshLocal()]);
     return { ok: !r.error, error: r.error ?? null, sync: p.syncState() };
   }],
+  // 分支上的环境标签（生产、测试……）：页面上加 / 改 / 删，写回 config.json
+  ['POST', P('/labels'), async (p, q, m, res, req) => {
+    const body = await readBody(req);
+    const list = Array.isArray(body?.environments) ? body.environments : null;
+    if (!list || list.some((e) => typeof e?.name !== 'string' || !e.name.trim() || e.name.length > 40)) throw Object.assign(new Error('标签格式不对'), { status: 400 });
+    for (const e of list) {
+      if (e.probe && !/^https?:\/\/\S+$/i.test(String(e.probe).trim())) throw Object.assign(new Error('探测地址要以 http:// 或 https:// 开头'), { status: 400 });
+    }
+    await p.setEnvironments(list, here);
+    return { ok: true };
+  }],
   ['POST', P('/refresh'), async (p) => {
     await Promise.all([p.refreshLocal(), p.probeEnvs()]);
     return { ok: true };
   }],
 ];
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > 64 * 1024) {
+        reject(Object.assign(new Error('请求太大'), { status: 413 }));
+        req.destroy();
+      } else chunks.push(c);
+    });
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
+      } catch {
+        reject(Object.assign(new Error('不是合法的 JSON'), { status: 400 }));
+      }
+    });
+    req.on('error', reject);
+  });
+}
 
 /** 页面上说的分支名（dev）在云端副本里叫 origin/dev。 */
 async function refOf(p, ref) {
@@ -161,7 +198,7 @@ const server = http.createServer(async (req, res) => {
         project = ws.get(decodeURIComponent(m[1]));
         if (!project) return send(res, 404, { error: '没有这个项目：' + decodeURIComponent(m[1]) });
       }
-      const out = await handler(project, url.searchParams, m, res);
+      const out = await handler(project, url.searchParams, m, res, req);
       if (out !== undefined) send(res, 200, out);
       const ms = Date.now() - started;
       if (ms > 2000) console.log(`  慢请求 ${ms}ms  ${req.method} ${url.pathname}${url.search}`);
