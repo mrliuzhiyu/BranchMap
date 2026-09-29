@@ -11,6 +11,7 @@ import { openAddProject } from './lib/addproject.js';
 import { startAmbient } from './lib/ambient.js';
 import { openSettings } from './lib/settings.js';
 import { sortable, isDragging } from './lib/sortable.js';
+import { resizer } from './lib/resize.js';
 import * as board from './views/board.js';
 import * as project from './views/project.js';
 import * as members from './views/members.js';
@@ -113,6 +114,8 @@ function renderSide() {
   $('#side .pjs').scrollTop = keep;
 }
 let sidePending = false;
+// 侧栏宽度：拖右边缘
+resizer($('#rz-side'), { target: $('#app'), prop: '--side-w', key: 'side', min: 200, max: 420, dir: 1, def: 252 });
 
 /* ---------- 项目拖动排序：按住上下拖，拖过分组标题就换组；顺序写回配置，看板跟着同一个顺序 ---------- */
 sortable($('#side'), {

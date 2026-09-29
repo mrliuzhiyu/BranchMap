@@ -9,6 +9,7 @@
 import { esc, icon, ago, avatar, levelIcon, prChip } from '../lib/util.js';
 import { request } from '../lib/api.js';
 import { MAIN, DEV, branchColor } from '../lib/colors.js';
+import { resizer } from '../lib/resize.js';
 
 const LEVEL = { critical: 0, warning: 1, info: 2 };
 // 线路图的几何：分支一行矮一点，主线一行高一点（站点名字写在站点下面）
@@ -173,7 +174,7 @@ export function mount(el, { href, addProject, linkHref }) {
       on.push(`<span class="gaps" style="left:calc(${J2 * 100}% + 12px);top:${mid}px">${pend}${back}</span>`);
     }
     return `<div class="pmap" data-map="${esc(p.id)}">
-      <div class="mls">${rows.map(label).join('')}</div>
+      <div class="mls">${rows.map(label).join('')}</div><i class="rz-map"></i>
       <div class="trk" style="height:${height}px"><svg class="msvg" height="${height}"></svg>${on.join('')}</div>
     </div>`;
   }
@@ -290,7 +291,11 @@ export function mount(el, { href, addProject, linkHref }) {
         ${data.projects.map(projectBlock).join('') || `<section class="mod"><div class="quiet pad">还没有项目</div></section>`}
         <button class="addpj" data-add-project>${icon.plus(13)}<span>添加项目</span></button>
       </div>
-      <div class="bcol">${local()}${people()}</div>`;
+      <div class="bcol">${local()}${people()}</div>
+      <i class="rz-board"></i>`;
+    // 可拖：左右两栏的分界（右栏宽度）、线路图名字那一列的宽度（所有项目共用一个宽度）
+    resizer(root.querySelector('.rz-board'), { target: root, prop: '--bw', key: 'board-right', min: 260, max: 640, dir: -1, def: 380, onChange: paintMaps });
+    for (const h of root.querySelectorAll('.rz-map')) resizer(h, { target: root, prop: '--mlw', key: 'board-map-labels', min: 120, max: 420, dir: 1, def: 200, onChange: paintMaps });
     paintMaps();
   }
 

@@ -3,6 +3,7 @@
 import { esc, icon, avatar, ago, when, fullStamp, toast, debounce, closePop, prChip, copyText } from '../lib/util.js';
 import { request } from '../lib/api.js';
 import { branchColor } from '../lib/colors.js';
+import { resizer } from '../lib/resize.js';
 
 const FILTERS = [
   { id: 'all', label: '全部' },
@@ -146,7 +147,7 @@ export function mount(el, ctx) {
       </div>
       ${f === 'clean' ? cleanBar(list) : trunkCard()}
       <div class="bl card${f === 'clean' ? ' picking' : ''}">
-        <div class="bl-h"><span>分支</span><span>负责人</span><span data-tip="云端 · 本机">状态</span><span data-tip="${esc(`自己的提交 / ${devName} 比它多的提交`)}">对 ${esc(devName ?? '')}</span><span data-tip="${esc(st.map((s) => s.name).join(' → '))}">走到</span><span>更新</span><span></span></div>
+        <div class="bl-h"><span>分支</span><span><i data-col="1"></i>负责人</span><span data-tip="云端 · 本机"><i data-col="2"></i>状态</span><span data-tip="${esc(`自己的提交 / ${devName} 比它多的提交`)}"><i data-col="3"></i>对 ${esc(devName ?? '')}</span><span data-tip="${esc(st.map((s) => s.name).join(' → '))}"><i data-col="4"></i>走到</span><span><i data-col="5"></i>更新</span><span></span></div>
         ${list.map((r) => {
           const p = r.owner != null ? persons[r.owner] : null;
           const tags = [
@@ -166,6 +167,12 @@ export function mount(el, ctx) {
           </div>`;
         }).join('') || `<div class="quiet pad">${icon.check(14)} 没有符合的分支</div>`}
       </div>`;
+    // 表头每列左边的分界都能拖：往右拖 = 这一列变窄、分支名那列变宽（列宽记在浏览器里，所有项目共用）
+    const DEF = [0, 130, 92, 88, 76, 64];
+    for (const h of root.querySelectorAll('.bl-h [data-col]')) {
+      const i = Number(h.dataset.col);
+      resizer(h, { target: root, prop: `--bc${i}`, key: `branches-col${i}`, min: 40, max: 360, dir: -1, def: DEF[i] });
+    }
   }
 
   /** 两条主线直接比：待上线（集成分支有、上线分支没有）、没回合（上线分支有、集成分支没有），点了去分支图看明细 */

@@ -1,6 +1,7 @@
 // 「改动」抽屉：左边文件列表，右边差异。提交详情、分支对比、未提交的改动都用它。
 import { esc, icon, filePath, lineStat, IMAGE_EXT } from './util.js';
 import { mountDiff } from './code.js';
+import { resizer } from './resize.js';
 
 let current = null;
 export function closeChanges() {
@@ -28,9 +29,14 @@ export function openChanges({ title, sub = '', files, load, images = null, selec
       <span class="muted" style="font-size:12px">${files.length} 个文件</span>${lineStat(totalAdd, totalDel)}
       <button class="icon-btn" data-close title="关闭 (Esc)">${icon.close(16)}</button>
     </div>
-    <div class="drawer-b"><div class="side files"></div><div class="main"></div></div>
+    <div class="drawer-b"><div class="side files"></div><div class="main"></div><div class="rz-files"></div></div>
+    <div class="rz-drawer"></div>
   </section>`;
   document.body.append(el);
+  // 抽屉整体宽度（拖左边）和文件列表宽度（拖中间的分界）都能拖，记在浏览器里
+  const drawer = el.querySelector('.drawer');
+  resizer(el.querySelector('.rz-drawer'), { target: drawer, prop: '--drw', key: 'drawer', min: 560, max: () => innerWidth - 40, dir: -1, def: Math.min(1100, innerWidth * 0.92) });
+  resizer(el.querySelector('.rz-files'), { target: drawer, prop: '--dfw', key: 'drawer-files', min: 180, max: 640, dir: 1, def: 320 });
   const side = el.querySelector('.side');
   const main = el.querySelector('.main');
   let idx = Math.max(0, files.findIndex((f) => f.p === select));

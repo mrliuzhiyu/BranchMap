@@ -185,10 +185,10 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border-radius: 4px; border: 1px 
 
 /* 抽屉 / 覆盖层 */
 .overlay { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.35); display: flex; justify-content: flex-end; }
-.drawer { width: min(1100px, 92vw); height: 100%; background: var(--surface); border-left: 1px solid var(--line-2); box-shadow: var(--shadow); display: flex; flex-direction: column; min-width: 0; }
+.drawer { position: relative; width: var(--drw, min(1100px, 92vw)); max-width: calc(100vw - 40px); height: 100%; background: var(--surface); border-left: 1px solid var(--line-2); box-shadow: var(--shadow); display: flex; flex-direction: column; min-width: 0; }
 .drawer-h { display: flex; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
 .drawer-h h3 { margin: 0; font-size: 14px; font-weight: 650; min-width: 0; }
-.drawer-b { flex: 1; min-height: 0; display: grid; grid-template-columns: 320px minmax(0, 1fr); }
+.drawer-b { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--dfw, 320px) minmax(0, 1fr); position: relative; }
 .drawer-b > .side { border-right: 1px solid var(--line); overflow: auto; }
 .drawer-b > .main { overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
 
@@ -394,7 +394,7 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border-radius: 4px; border: 1px 
 .lrow2 > .muted:last-child { margin-left: auto; display: inline-flex; gap: 3px; align-items: center; font-size: 12px; }
 
 /* ============ 分支图：左 主线与分支 · 中 提交图 · 右 详情 ============ */
-.ws { height: 100%; display: grid; grid-template-columns: 264px minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr); }
+.ws { height: 100%; display: grid; grid-template-columns: var(--lw, 264px) minmax(0, 1fr) auto; grid-template-rows: minmax(0, 1fr); position: relative; }
 .ws > * { min-height: 0; }
 .lcol { overflow-y: auto; padding: 8px 12px 40px 20px; }
 .rails { display: grid; gap: 2px; margin-bottom: 22px; }
@@ -549,7 +549,7 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border-radius: 4px; border: 1px 
 
 /* ============ OriginSpace 设计语言：#f7f7f7 底 + 浮动白色侧栏 + 白卡片，背景有浮形和流星 ============ */
 .ambient { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: -1; }
-#app { position: relative; grid-template-columns: 252px minmax(0, 1fr); }
+#app { position: relative; grid-template-columns: var(--side-w, 252px) minmax(0, 1fr); }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--card-shadow); }
 
 /* 侧栏：离边 12px 的白色浮动卡片 */
@@ -578,7 +578,7 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border-radius: 4px; border: 1px 
 .crumbs b { font-size: 13px; }
 .board, .members { max-width: 1440px; margin: 0; padding: 0 28px 60px 28px; }
 /* 看板：左边项目（主体，一个项目一块），右边本机和成员 */
-.board { grid-template-columns: minmax(0, 2.1fr) minmax(280px, 1fr); }
+.board { grid-template-columns: minmax(0, 1fr) var(--bw, 380px); position: relative; }
 .pblk { padding: 14px 18px 12px; }
 .pblk.folded { padding-bottom: 14px; }
 .phd { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -595,7 +595,7 @@ kbd { font: 11px var(--mono); padding: 1px 5px; border-radius: 4px; border: 1px 
 .pblk.off .phd .pn { color: var(--muted); }
 
 /* 线路图：左边是名字，右边是轨道；轨道上的线量宽度后用 SVG 画，站点和小点按百分比放 */
-.pmap { display: grid; grid-template-columns: 200px minmax(0, 1fr); column-gap: 10px; margin: 12px 0 4px; }
+.pmap { display: grid; grid-template-columns: var(--mlw, 200px) minmax(0, 1fr); column-gap: 10px; margin: 12px 0 4px; position: relative; }
 .mls { display: flex; flex-direction: column; min-width: 0; }
 .ml { display: flex; align-items: center; gap: 7px; min-width: 0; font-size: 12px; color: var(--text-2); padding: 0 6px; border-radius: 6px; }
 a.ml:hover { background: var(--hover); color: var(--text); }
@@ -661,10 +661,10 @@ a.gapb:hover { text-decoration: underline; text-underline-offset: 3px; }
 .gcol { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; box-shadow: var(--card-shadow); overflow: hidden; }
 .gbar { padding: 12px 16px 10px 12px; }
 .gsearch { background: var(--bg); }
-.gr { grid-template-columns: var(--gw) minmax(0, 760px) 28px 84px; justify-content: start; padding-right: 16px; }
+.gr { grid-template-columns: var(--gw) minmax(0, var(--gm, 520px)) 28px 84px; justify-content: start; padding-right: 16px; }
 .gr:hover { background: var(--hover); }
 .gr.sel { background: var(--select); }
-.dcol { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--card-shadow); width: 380px; }
+.dcol { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--card-shadow); width: var(--dw, 380px); }
 
 /* 成员卡片：白卡片，顶部按这个人的颜色染一层，数据是浅灰小块 */
 .mgrid { gap: 14px; }
@@ -791,7 +791,7 @@ html.sorting, html.sorting * { cursor: grabbing !important; user-select: none; }
 
 /* 分支表 */
 .bl { padding: 6px; }
-.bl-h, .bl-r { display: grid; grid-template-columns: minmax(0, 1fr) 130px 92px 88px 76px 64px 16px; align-items: center; gap: 12px; padding: 0 12px; }
+.bl-h, .bl-r { display: grid; grid-template-columns: minmax(0, 1fr) var(--bc1, 130px) var(--bc2, 92px) var(--bc3, 88px) var(--bc4, 76px) var(--bc5, 64px) 16px; align-items: center; gap: 12px; padding: 0 12px; }
 .bl-h { height: 32px; font-size: 11px; color: var(--muted); letter-spacing: .04em; }
 .bl-r { min-height: 40px; border-radius: 10px; cursor: pointer; }
 .bl-r:hover { background: var(--surface-2); }
@@ -904,3 +904,52 @@ html.sorting, html.sorting * { cursor: grabbing !important; user-select: none; }
 .tsame > svg { color: var(--good); }
 .tsame i { width: 8px; height: 8px; border-radius: 2px; background: var(--c); }
 .tsame span { font-family: var(--sans, inherit); color: var(--muted); }
+
+/* ============ 拖动调宽：面板的边、表格列的边。平时看不见，鼠标移上去出现一条细线；双击恢复默认 ============ */
+.rz { position: absolute; z-index: 6; width: 10px; cursor: col-resize; touch-action: none; }
+.rz::after { content: ''; position: absolute; left: 4px; top: 0; bottom: 0; width: 2px; border-radius: 1px; background: var(--accent-line); opacity: 0; transition: opacity 0.15s; }
+.rz:hover::after, .rz.on::after { opacity: 1; }
+html.resizing, html.resizing * { cursor: col-resize !important; user-select: none; }
+#app > .rz-side { top: 12px; bottom: 12px; left: calc(var(--side-w, 252px) - 5px); }
+.rz-drawer { top: 0; bottom: 0; left: -5px; }
+.rz-files { top: 0; bottom: 0; left: calc(var(--dfw, 320px) - 5px); }
+.rz-board { top: 0; bottom: 0; right: calc(28px + var(--bw, 380px) + 3px); }
+.rz-map { top: 0; bottom: 0; left: var(--mlw, 200px); }
+.bl-h > span { position: relative; align-self: stretch; display: flex; align-items: center; }
+.bl-h [data-col] { top: 0; bottom: 0; left: -11px; }
+@media (max-width: 1100px) { .rz-board { display: none; } .board { grid-template-columns: minmax(0, 1fr); } }
+
+/* ================= 分支图：主线视图 ================= */
+.gmode { display: inline-flex; background: var(--surface-2); border-radius: 9px; padding: 2px; flex: none; }
+.gmode button { height: 26px; padding: 0 10px; border: 0; border-radius: 7px; background: none; color: var(--muted); font-size: 12px; cursor: pointer; }
+.gmode button[aria-pressed="true"] { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+.ghead { position: relative; height: 26px; flex: none; border-bottom: 1px solid var(--line); }
+.ghead[hidden] { display: none; }
+.hrail { position: absolute; bottom: 5px; transform: translateX(-50%); font-family: var(--mono); font-size: 10.5px; font-weight: 700; color: var(--c); cursor: pointer; white-space: nowrap; }
+.hrail::after { content: ''; position: absolute; left: 50%; bottom: -6px; width: 4px; height: 5px; margin-left: -2px; background: var(--c); border-radius: 1px; }
+.hlegend { position: absolute; bottom: 4px; display: flex; align-items: center; gap: 12px; font-size: 11.5px; color: var(--muted); padding-left: 8px; }
+.hlegend > span { display: inline-flex; align-items: center; gap: 2px; cursor: pointer; }
+.hlegend > span.on { color: var(--text-2); font-weight: 600; }
+.hlegend > span.warn { color: var(--warning-ink); }
+.hlegend > span:hover { color: var(--text); }
+.hlegend > svg { color: var(--faint); }
+.mk { display: inline-flex; align-items: center; gap: 4px; height: 18px; padding: 0 7px; border-radius: 5px; font-size: 11px; font-weight: 600; white-space: nowrap; flex: none; }
+.mk.release, .mk.back { background: var(--c); color: #fff; }
+.mk.back { background: none; color: var(--c); box-shadow: inset 0 0 0 1.5px var(--c); }
+.mk.feat { font-family: var(--mono); color: var(--text-2); background: var(--surface-2); max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.mk.feat i { width: 7px; height: 7px; border-radius: 50%; background: var(--c); flex: none; }
+.mcnt { display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; flex: none; }
+.mcnt .avatar, .mcnt img { width: 14px; height: 14px; }
+.gs.sub { color: var(--muted); font-size: 12.5px; }
+.dsec { margin-top: 18px; }
+.dsh { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.mk.sync { color: var(--muted); background: var(--surface-2); font-weight: 500; }
+.mk.feat svg { color: var(--c); flex: none; }
+.chipx { white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; flex: none; }
+/* 分支图：左栏、右侧详情、提交说明列的拖动柄 */
+.gcol { position: relative; }
+.rz-l { top: 0; bottom: 16px; left: calc(30px + var(--lw, 264px)); }
+.rz-d { top: 0; bottom: 16px; right: calc(18px + var(--dw, 380px)); }
+.ws:has(> .dcol[hidden]) > .rz-d { display: none; }
+/* 说明列放不下设定宽度时会被挤窄（头像 28 + 时间 84 + 右边距 16 + 三个间隔 24 = 152），拖动柄跟着实际位置 */
+.rz-msg { bottom: 0; top: 56px; left: calc(var(--gw, 60px) + min(var(--gm, 520px), 100% - var(--gw, 60px) - 152px) + 7px); }
