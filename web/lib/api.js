@@ -7,6 +7,11 @@ import { colorPersons } from './flowui.js';
 
 export async function request(url, opts = {}) {
   const res = await fetch(url, opts);
+  // 部署在服务器上、飞书登录过期了：重新登录（本机不开门禁，不会有 401）
+  if (res.status === 401) {
+    location.href = '/auth/login';
+    return new Promise(() => {});
+  }
   let body;
   try {
     body = await res.json();

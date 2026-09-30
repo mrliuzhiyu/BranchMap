@@ -12,6 +12,7 @@ import { exec } from 'node:child_process';
 import { loadConfig } from './lib/config.mjs';
 import { Workspace } from './lib/project.mjs';
 import { firstLine, git, run } from './lib/git.mjs';
+import { createAuth } from './lib/auth.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 let cfg;
@@ -28,6 +29,10 @@ if (!cfg.scan.length && !cfg.extraRepos.length && !cfg.projects.length) {
 const PORT = cfg.port;
 const HOST = '127.0.0.1';
 const ws = new Workspace(cfg);
+// 部署到服务器时：公司飞书门禁（本机没配就是 null，一切照旧）
+const auth = cfg.auth ? createAuth(cfg.auth) : null;
+// 开了门禁时，改配置的接口只有管理员能调；同步、刷新谁都能点
+const OPEN_POST = /^\/api\/p\/[^/]+\/(sync|refresh)$/;
 
 /* ---------- 路由 ---------- */
 const P = (re) => new RegExp('^/api/p/([^/]+)' + re + '$');
@@ -43,7 +48,12 @@ const routes = [
     projects: await Promise.all(ws.list().map((p) => p.board())),
   })],
   // 我：本机 Git 的身份 + GitHub 账号的头像（gh 登录了才有），侧栏底部显示
-  ['GET', /^\/api\/me$/, () => me()],
+  // 开了门禁：「我」是飞书登录的这个人
+  ['GET', /^\/api\/me$/, (p, q, m, res, req) => {
+    if (!auth) return me();
+    const u = auth.user(req);
+    return { name: u?.name || null, email: null, login: null, avatar: u?.avatar ?? null, admin: auth.isAdmin(u) };
+  }],
   // 项目化：候选仓库、添加、移除
   ['GET', /^\/api\/discovered$/, () => ws.discovered()],
   ['POST', /^\/api\/projects$/, async (p, q, m, res, req) => {
@@ -247,6 +257,8 @@ setInterval(() => {
 }, 25000).unref();
 
 const allowedHosts = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]);
+// 部署到服务器时，nginx 把公网域名原样转过来（proxy_set_header Host $host）
+if (auth) allowedHosts.add(auth.host);
 
 const server = http.createServer(async (req, res) => {
   // 只接本机：挡住 DNS 重绑定和别的网页跨站来调接口
@@ -255,6 +267,10 @@ const server = http.createServer(async (req, res) => {
   if (origin && !allowedHosts.has(origin.replace(/^https?:\/\//, ''))) return send(res, 403, { error: 'origin 不对' });
 
   const url = new URL(req.url, `http://${req.headers.host}`);
+  if (auth) {
+    if (await auth.gate(req, res, url)) return;
+    if (req.method !== 'GET' && url.pathname.startsWith('/api/') && !OPEN_POST.test(url.pathname) && !auth.isAdmin(auth.user(req))) return send(res, 403, { error: '只有管理员能改配置' });
+  }
   if (url.pathname === '/api/events') return events(req, res);
   if (!url.pathname.startsWith('/api/')) {
     if (req.method !== 'GET') return send(res, 405, { error: '只读' });
