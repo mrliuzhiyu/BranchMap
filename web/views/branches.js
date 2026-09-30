@@ -1,6 +1,6 @@
 // 分支页：所有分支一张表——谁的、提交多少、相对集成分支领先 / 落后多少、走到了哪一站、云端 / 本机状态、PR、工单与自定义标签。
 // 上面筛选（进行中 / 待上线 / 已上线 / 停滞 / 本机 / 我的）和排序；点一行去分支图并打开这条分支。
-import { esc, icon, avatar, ago, when, fullStamp, toast, debounce, closePop, prChip, copyText } from '../lib/util.js';
+import { esc, icon, avatar, ago, when, fullStamp, toast, debounce, closePop, prChip, copyText, tipCard } from '../lib/util.js';
 import { request } from '../lib/api.js';
 import { branchColor } from '../lib/colors.js';
 import { resizer } from '../lib/resize.js';
@@ -75,7 +75,8 @@ export function mount(el, ctx) {
     const tip = r.cloud ? M.branches.get(r.name)?.tip ?? -1 : -1;
     if (tip < 0) return '<span class="jy faint" data-tip="只在本机，云端没有">—</span>';
     const on = st.map((s) => M.isAncestor(tip, s.tip));
-    return `<span class="jy" data-tip="${esc(st.map((s, i) => `${on[i] ? '●' : '○'} ${s.env ? '环境 ' : '分支 '}${s.name}`).join('\n'))}">${st.map((s, i) => `<i class="${on[i] ? 'on' : ''}${s.env ? ' e' : ''}" style="--c:${s.color}"></i>`).join('')}</span>`;
+    const card = tipCard({ title: '走到哪了', dots: st.map((s, i) => ({ on: on[i], c: s.color, env: s.env, label: `${s.env ? '环境 ' : ''}${s.name}${on[i] ? '' : '（还没有）'}` })) });
+    return `<span class="jy" data-tip-html data-tip="${esc(card)}">${st.map((s, i) => `<i class="${on[i] ? 'on' : ''}${s.env ? ' e' : ''}" style="--c:${s.color}"></i>`).join('')}</span>`;
   }
 
   function filtered(all) {
@@ -157,7 +158,7 @@ export function mount(el, ctx) {
             r.status === 'stale' ? `<span class="stag" data-tip="超过 30 天没动">${icon.clock(10)}</span>` : '',
           ].join('');
           return `<div class="bl-r" data-open="${esc(r.name)}" style="--c:${r.color}">
-            <span class="bn2">${f === 'clean' ? `<input type="checkbox" data-pick="${esc(r.name)}" ${picks?.has(r.name) ? 'checked' : ''}>` : ''}<i class="dot"></i><span class="nm" title="${esc(r.name)}">${esc(r.name)}</span>${tags}<button class="addtag" data-addtag="${esc(r.name)}" data-tip="加标签">${icon.tag(11)}</button></span>
+            <span class="bn2">${f === 'clean' ? `<input type="checkbox" data-pick="${esc(r.name)}" ${picks?.has(r.name) ? 'checked' : ''}>` : ''}<i class="dot"></i><span class="nm" data-tip-c="${r.color}" data-tip="${esc(`${r.name}\n${ctx.overview.persons[r.owner]?.name ?? ''}${r.tip?.subject ? `\n最新：${r.tip.subject}` : ''}\n点击在分支图里打开`)}">${esc(r.name)}</span>${tags}<button class="addtag" data-addtag="${esc(r.name)}" data-tip="加标签">${icon.tag(11)}</button></span>
             <span class="ow">${p ? `${avatar(p, 18)}<span>${esc(p.name)}</span>` : '<span class="faint">—</span>'}</span>
             <span class="sti">${cloudIcon(r)}${localIcon(r)}</span>
             <span class="ab">${r.own != null ? `<span class="up" data-tip="自己的提交">${icon.arrowUp(9)}${r.own}</span>` : ''}${r.behind != null ? `<span class="${r.behind ? 'down' : 'zero'}" data-tip="${esc(`${devName} 比它多的提交`)}">${icon.arrowDown(9)}${r.behind}</span>` : ''}</span>

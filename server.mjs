@@ -206,6 +206,9 @@ async function serveStatic(pathname, res) {
   let file = STATIC[pathname];
   const lang = /^\/vendor\/lang\/([a-z0-9-]+)\.js$/.exec(pathname);
   if (lang) file = join(here, 'node_modules', '@highlightjs', 'cdn-assets', 'es', 'languages', `${lang[1]}.min.js`);
+  // pretext（量文字宽度）：dist 里是多个 ES 模块，互相用相对路径引用
+  const pt = /^\/vendor\/pretext\/((?:generated\/)?[a-z-]+\.js)$/.exec(pathname);
+  if (pt) file = join(here, 'node_modules', '@chenglou', 'pretext', 'dist', pt[1]);
   if (!file) {
     const rel = pathname === '/' ? 'index.html' : decodeURIComponent(pathname.slice(1));
     file = resolve(here, 'web', rel);

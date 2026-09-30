@@ -13,6 +13,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@chenglou/pretext": "^0.0.9",
     "@highlightjs/cdn-assets": "^11.12.0"
   }
 }

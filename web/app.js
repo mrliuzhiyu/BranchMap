@@ -12,6 +12,7 @@ import { startAmbient } from './lib/ambient.js';
 import { openSettings } from './lib/settings.js';
 import { sortable, isDragging } from './lib/sortable.js';
 import { resizer } from './lib/resize.js';
+import { watchMid } from './lib/measure.js';
 import * as board from './views/board.js';
 import * as project from './views/project.js';
 import * as members from './views/members.js';
@@ -165,14 +166,18 @@ function renderTop() {
   const route = parse();
   const o = route.id ? storeFor(route.id).overview : null;
   const P = route.id ? projectList?.projects.find((p) => p.id === route.id) : null;
+  // 左边是在哪一层（项目名在右边的项目选择器里，不重复）
   const crumbs = [];
+  const name = route.id ? o?.name ?? P?.name ?? route.id : null;
   if (route.id) {
-    const name = o?.name ?? P?.name ?? route.id;
     if (route.view === 'people' && route.sub != null) {
       const person = o?.persons?.[Number(route.sub)];
-      crumbs.push(`<a href="${href(route.id)}">${icon.repo(12)}${esc(name)}</a>`, `<a href="${href(route.id, 'people')}">成员</a>`, `<b>${avatar(person, 16)}${esc(person?.name ?? '')}</b>`);
-    } else crumbs.push(`<b>${icon.repo(12)}${esc(name)}</b>`, `<span>${VIEWS[route.view].label}</span>`);
-  }
+      crumbs.push(`<a href="${href(route.id, 'people')}">成员</a>`, `<b>${avatar(person, 16)}${esc(person?.name ?? '')}</b>`);
+    } else crumbs.push(`<b>${VIEWS[route.view].label}</b>`);
+  } else crumbs.push('<b>看板</b>');
+  // 项目选择器：当前在哪个项目、点开切换；后面紧跟着的问题 / 同步 / 设置都是这个项目的
+  const lvP = P && P.ready ? worst(P.health) : null;
+  const sel = `<button class="psel" data-switch data-pop-anchor data-tip="切换项目 (Ctrl K)">${icon.repo(13)}<span class="ell">${esc(name ?? '全部项目')}</span>${lvP === 'critical' || lvP === 'warning' ? `<i class="sd ${lvP}"></i>` : ''}${icon.chevronDown(11)}</button>`;
   let status = '';
   if (route.id && o?.ready) {
     const hl = o.health.filter((h) => h.level !== 'info');
@@ -188,6 +193,7 @@ function renderTop() {
   $('#top').innerHTML = `
     <nav class="crumbs">${crumbs.join(`<i>${icon.chevronRight(11)}</i>`)}</nav>
     <span class="grow"></span>
+    ${sel}
     ${status}
     <button class="btn primary addp" data-add>${icon.plus(13)}添加项目</button>`;
 }
@@ -237,7 +243,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 document.addEventListener('click', async (e) => {
-  const t = e.target.closest('#side [data-add], #top [data-add], #top [data-settings], #side [data-search], #side [data-theme], #side [data-side-mini], #side [data-me], #side [data-pmenu], #top [data-sync], #top [data-health]');
+  const t = e.target.closest('#side [data-add], #top [data-add], #top [data-settings], #side [data-search], #side [data-theme], #side [data-side-mini], #side [data-me], #side [data-pmenu], #top [data-sync], #top [data-health], #top [data-switch]');
   if (!t) return;
   const route = parse();
   if (t.dataset.add !== undefined) addProject();
@@ -255,7 +261,7 @@ document.addEventListener('click', async (e) => {
     const pid = myPersonId(o);
     location.hash = href(id, 'people', {}, pid);
   }
-  else if (t.dataset.search !== undefined) openSwitch(t);
+  else if (t.dataset.search !== undefined || t.dataset.switch !== undefined) openSwitch(t);
   else if (t.dataset.sideMini !== undefined) {
     // 收起 / 展开侧栏，记在浏览器里
     const on = document.documentElement.classList.toggle('side-mini');
@@ -416,9 +422,30 @@ window.addEventListener('focus', () => {
 });
 setInterval(renderChrome, 60000);
 
+// 和本机服务断开：超过 3 秒才在顶部提示（刷新页面、服务重启这种一闪而过的不打扰），连回来自动消失
+let connTimer = 0;
+function connBanner(ok) {
+  clearTimeout(connTimer);
+  let el = document.getElementById('conn');
+  if (ok) {
+    if (el && !el.hidden) toast('已重新连上');
+    if (el) el.hidden = true;
+    return;
+  }
+  connTimer = setTimeout(() => {
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'conn';
+      el.innerHTML = `<span class="spin" style="display:inline-grid">${icon.sync(13)}</span><span>和本机服务的连接断了，正在重连…</span>`;
+      document.body.append(el);
+    }
+    el.hidden = false;
+  }, 3000);
+}
 connectEvents((ok) => {
   if (ok === live) return;
   live = ok;
+  connBanner(ok);
   renderSide();
   const r = parse();
   if (ok && r.id) storeFor(r.id).changed('reconnect');
@@ -429,6 +456,7 @@ listProjects().then((l) => {
   renderChrome();
 }).catch(() => {});
 startAmbient();
+watchMid();
 request('/api/me').then((m) => {
   me = m;
   renderSide();

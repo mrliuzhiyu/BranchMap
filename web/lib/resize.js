@@ -4,6 +4,8 @@
 //   resizer(handle, { target, prop: '--lw', key: 'graph-left', min: 180, max: 480, dir: 1, def: 264, onChange })
 //   dir =  1：往右拖变宽（面板在边的左边）
 //   dir = -1：往右拖变窄（面板在边的右边）
+import { refitMid } from './measure.js';
+
 const store = {
   get(k) {
     try {
@@ -46,6 +48,7 @@ export function resizer(handle, { target, prop, key, min = 120, max = 1200, dir 
       last = clamp(w0 + dir * (ev.clientX - x0));
       target.style.setProperty(prop, last + 'px');
       onChange?.(last);
+      refitMid();
     };
     const up = () => {
       handle.removeEventListener('pointermove', move);
@@ -65,6 +68,7 @@ export function resizer(handle, { target, prop, key, min = 120, max = 1200, dir 
     target.style.removeProperty(prop);
     store.set(key, null);
     onChange?.(current());
+    refitMid();
   });
   // 拖动柄上的点击不要冒泡成「点了这一行 / 这一列」
   handle.addEventListener('click', (e) => e.stopPropagation());

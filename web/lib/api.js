@@ -137,7 +137,14 @@ export function connectEvents(onStatus) {
   if (es) return;
   es = new EventSource('/api/events');
   es.onopen = () => onStatus?.(true);
-  es.onerror = () => onStatus?.(false);
+  es.onerror = () => {
+    onStatus?.(false);
+    // 浏览器一般会自己重连；连接被判定为关闭（不再重试）时，自己隔几秒重建
+    if (es.readyState === EventSource.CLOSED) {
+      es = null;
+      setTimeout(() => connectEvents(onStatus), 3000);
+    }
+  };
   es.onmessage = (m) => {
     let e;
     try {

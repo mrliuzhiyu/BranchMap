@@ -170,8 +170,46 @@ export function who(p, size = 18) {
   return `<span class="who">${avatar(p, size)}<span class="ell">${esc(p?.name ?? '?')}</span></span>`;
 }
 
-/* ---------- 提示框：任何带 data-tip 的元素悬停显示 ---------- */
+/* ---------- 提示框：任何带 data-tip 的元素悬停显示 ----------
+   纯文字的 data-tip 自动排版成一张小卡片：
+     第一行 = 标题（加粗；元素上有 data-tip-c 时标题前是那个颜色的点，比如分支色）
+     其余行 = 正文；「键：值」短键的行排成两列；「● 名字 / ○ 名字」画成实心 / 空心圆点
+     「点击…」「点一下…」这类操作说明 = 底部的小字
+   需要更丰富的内容（多种颜色、头像）用 tipCard() 生成 HTML，元素上加 data-tip-html。 */
 const tip = () => document.getElementById('tip');
+const HINT = /^(点击|点一下|点开|按住|拖|双击|右键|回车)/;
+function tipLine(l) {
+  const dot = /^([●○])\s*(.*)$/.exec(l);
+  if (dot) return `<div class="tdot${dot[1] === '●' ? ' on' : ''}"><i></i><span>${esc(dot[2])}</span></div>`;
+  const kv = /^([^：:\s]{1,6})[：:]\s*(.+)$/.exec(l);
+  if (kv) return `<div class="tkv"><span>${esc(kv[1])}</span><b>${esc(kv[2])}</b></div>`;
+  return `<div class="tb">${esc(l)}</div>`;
+}
+function formatTip(text, color) {
+  const lines = String(text ?? '').split('\n').map((s) => s.trim()).filter(Boolean);
+  if (!lines.length) return '';
+  const dot = color ? `<i class="tc" style="background:${esc(color)}"></i>` : '';
+  if (lines.length === 1 && !color) return `<div class="t1">${esc(lines[0])}</div>`;
+  const first = /^[●○]/.test(lines[0]) ? null : lines.shift();
+  const hint = lines.filter((l) => HINT.test(l));
+  const body = lines.filter((l) => !HINT.test(l));
+  return `${first ? `<div class="tt">${dot}<span>${esc(first)}</span></div>` : ''}${body.map(tipLine).join('')}${hint.length ? `<div class="th">${hint.map(esc).join('<br>')}</div>` : ''}`;
+}
+/**
+ * 结构化提示卡片（返回 HTML，放进 data-tip 并加 data-tip-html）：
+ *   c 标题前的颜色点；title 标题；sub 标题下一行淡字；
+ *   rows [[键, 值HTML]]；lines 正文（纯文字）；dots [{ on, c, label, env }] 一串站点（走到哪了）；hint 底部操作说明
+ * 值 HTML 由调用方负责转义。
+ */
+export function tipCard({ c = null, title, sub = null, rows = [], dots = [], lines = [], hint = null }) {
+  return `<div class="tt">${c ? `<i class="tc" style="background:${esc(c)}"></i>` : ''}<span>${esc(title)}</span></div>
+    ${sub ? `<div class="ts">${sub}</div>` : ''}
+    ${rows.length ? `<div class="tkvs">${rows.map(([k, v]) => `<div class="tkv"><span>${esc(k)}</span><b>${v}</b></div>`).join('')}</div>` : ''}
+    ${lines.map((l) => `<div class="tb">${esc(l)}</div>`).join('')}
+    ${dots.length ? `<div class="tdots">${dots.map((d) => `<div class="tdot${d.on ? ' on' : ''}${d.env ? ' is-env' : ''}" style="--c:${esc(d.c ?? 'var(--text)')}"><i></i><span>${esc(d.label)}</span></div>`).join('')}</div>` : ''}
+    ${hint ? `<div class="th">${esc(hint)}</div>` : ''}`;
+}
+const tipHtmlOf = (t) => ('tipHtml' in t.dataset ? t.dataset.tip : formatTip(t.dataset.tip, t.dataset.tipC));
 let tipOwner = null;
 export function showTip(x, y, html) {
   const el = tip();
@@ -214,7 +252,7 @@ document.addEventListener('mousemove', (e) => {
     }
     return;
   }
-  const html = t ? (t.dataset.tipHtml ? t.dataset.tip : esc(t.dataset.tip)) : esc(cut.textContent.trim());
+  const html = t ? tipHtmlOf(t) : `<div class="t1">${esc(cut.textContent.trim())}</div>`;
   const show = () => {
     tipTimer = 0;
     tipOwner = owner;
@@ -224,6 +262,16 @@ document.addEventListener('mousemove', (e) => {
   if (tipOwner || Date.now() < tipWarmUntil) return show();
   tipTimer = setTimeout(show, TIP_DELAY);
 });
+// 键盘 Tab 到带提示的按钮上，也显示提示（贴在它下面）
+document.addEventListener('focusin', (e) => {
+  const t = e.target.closest?.('[data-tip]');
+  if (!t || !e.target.matches(':focus-visible')) return;
+  const r = t.getBoundingClientRect();
+  clearTimeout(tipTimer);
+  tipOwner = t;
+  showTip(r.left, r.bottom - 12, tipHtmlOf(t));
+});
+document.addEventListener('focusout', () => tipOwner && hideTip());
 document.addEventListener('mouseleave', () => {
   clearTimeout(tipTimer);
   if (tipOwner) hideTip();

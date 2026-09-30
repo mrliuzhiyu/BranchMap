@@ -7,7 +7,7 @@
 //                  还没合进去的分支画在右边，各自一种颜色，连到它分出来的地方。
 //   右：第二层——点分支：它是谁的、走到哪了、它自己的提交；第三层——点提交：走到哪了、改了哪些文件（可返回分支）
 // 能用图形表达的就不写字；解释都放在悬停提示里。
-import { esc, icon, avatar, ago, when, fullStamp, toast, copyText, closePop, debounce, lineStat, fileName, prChip, picker } from '../lib/util.js';
+import { esc, icon, avatar, ago, when, fullStamp, toast, copyText, closePop, debounce, lineStat, fileName, prChip, picker, tipCard } from '../lib/util.js';
 import { layout, segPath, TRUNKS } from '../lib/layout.js';
 import { openChanges } from '../lib/changes.js';
 import { commitChangesLoader } from '../lib/commitview.js';
@@ -15,6 +15,7 @@ import { has } from '../lib/model.js';
 import { MAIN, DEV, HIST, branchColor } from '../lib/colors.js';
 import { openSettings } from '../lib/settings.js';
 import { resizer } from '../lib/resize.js';
+import { fitMid } from '../lib/measure.js';
 
 const RH = 30;
 const LW = 14;
@@ -208,6 +209,36 @@ export function mount(el, ctx) {
   }
   const colorFor = (k) => C.colorOf.get(k) ?? 'var(--hist)';
   const keyOfBranch = (name) => (name === C.mainName ? 'main' : name === C.devName ? 'dev' : 'b:' + name);
+
+  /**
+   * 点一条分支时点亮哪些提交（其余压暗）：
+   *   主线（dev / main）：整条第一父链；
+   *   分支：还没合进去的（b:名字）+ 从它合进来的（h:名字）+ 它自己那条线上最近的一段
+   *   （从最新提交沿第一父往下，到上一次合并、或第一个不是负责人写的提交为止——快进合并后这些提交记在主线上）。
+   *   不会出现整张图全暗。
+   * 返回 { ids: 点亮的提交, keys: 这些提交的颜色 key（对应的连线也不压暗） }
+   */
+  function branchFocus(name) {
+    const k = keyOfBranch(name);
+    const tip = M.branches.get(name)?.tip ?? -1;
+    const ids = new Set();
+    if (tip >= 0 && TRUNKS.has(k)) {
+      for (let c = tip; c !== undefined && c >= 0; c = M.P[c][0]) ids.add(c);
+    } else if (tip >= 0) {
+      for (let c = 0; c < M.N; c++) if (C.key[c] === k || C.key[c] === 'h:' + name) ids.add(c);
+      // 再加上它自己那条线上、比上一次合并更新的提交（快进合并后这些提交记在主线上，git 里认不出来源）
+      let floor = 0;
+      for (const c of ids) floor = Math.max(floor, M.t[c]);
+      const owner = O.branches.find((b) => b.name === name)?.owner ?? M.a[tip];
+      for (let c = tip; c !== undefined && c >= 0; c = M.P[c][0]) {
+        if (c !== tip && (ids.has(c) || M.a[c] !== owner || M.t[c] <= floor)) break;
+        ids.add(c);
+      }
+    }
+    const keys = new Set([k]);
+    for (const c of ids) keys.add(C.key[c]);
+    return { ids, keys };
+  }
   const railOf = (e) => (e.branch === C.mainName ? 'main' : e.branch === C.devName ? 'dev' : null);
 
   /** 走到哪了：dev → 测试 → main → 生产（有几站画几个点） */
@@ -222,7 +253,8 @@ export function mount(el, ctx) {
   }
   function journey(c) {
     const st = stops();
-    return `<span class="jy" data-tip="${esc(st.map((s) => `${M.isAncestor(c, s.tip) ? '●' : '○'} ${s.name}`).join('\n'))}">${st.map((s) => `<i class="${M.isAncestor(c, s.tip) ? 'on' : ''}${s.env ? ' e' : ''}" style="--c:${colorFor(s.k)}"></i>`).join('')}</span>`;
+    const card = tipCard({ title: '走到哪了', dots: st.map((s) => ({ on: M.isAncestor(c, s.tip), c: colorFor(s.k), env: s.env, label: `${s.env ? '环境 ' : ''}${s.name}${M.isAncestor(c, s.tip) ? '' : '（还没有）'}` })) });
+    return `<span class="jy" data-tip-html data-tip="${esc(card)}">${st.map((s) => `<i class="${M.isAncestor(c, s.tip) ? 'on' : ''}${s.env ? ' e' : ''}" style="--c:${colorFor(s.k)}"></i>`).join('')}</span>`;
   }
   function stepsHtml(c) {
     const st = stops();
@@ -230,7 +262,7 @@ export function mount(el, ctx) {
     return `<div class="steps">${st.map((s) => {
       const on = M.isAncestor(c, s.tip);
       const tip = s.env ? `环境「${s.name}」：${on ? '已经部署了这个提交' : '还没部署到这里'}` : `分支 ${s.name}：${on ? '已经合进来了' : '还没合进来'}`;
-      return `<div class="step${on ? ' on' : ''}${s.env ? ' is-env' : ''}" style="--c:${colorFor(s.k)}" data-tip="${esc(tip)}"><i>${s.env ? icon.server(8) : ''}</i><span>${esc(s.name)}</span></div>`;
+      return `<div class="step${on ? ' on' : ''}${s.env ? ' is-env' : ''}" style="--c:${colorFor(s.k)}" data-tip-c="${colorFor(s.k)}" data-tip="${esc(tip)}"><i>${s.env ? icon.server(8) : ''}</i><span>${esc(s.name)}</span></div>`;
     }).join('<b class="stepl"></b>')}</div>`;
   }
 
@@ -242,7 +274,7 @@ export function mount(el, ctx) {
       e.probe ? `探测：${e.probe}` : '',
       '点击看环境详情：待部署、发布清单、上线记录',
     ].filter(Boolean).join('\n');
-    return `<span class="env${e.assumed ? ' assumed' : ''}${e.state === 'down' ? ' down' : ''}" style="--c:${color}" data-env="${esc(e.id)}" data-tip="${esc(tip)}">${icon.server(9)}${esc(e.name)}</span>`;
+    return `<span class="env${e.assumed ? ' assumed' : ''}${e.state === 'down' ? ' down' : ''}" style="--c:${color}" data-env="${esc(e.id)}" data-tip-c="${color}" data-tip="${esc(tip)}">${icon.server(9)}${esc(e.name)}</span>`;
   }
 
   /* ================= 左栏：主线 + 按人的分支 ================= */
@@ -258,18 +290,36 @@ export function mount(el, ctx) {
       const T = O.trunk;
       if (T && name === T.dev && T.ahead.count) gap = `<span class="gap go" data-trunk-tab="ahead" data-tip="${esc(`待上线：${T.ahead.count} 个提交在 ${T.dev}、还没进 ${T.main}`)}">${icon.arrowRight(10)}${T.ahead.count}</span>`;
       if (T && name === T.main && T.behind.count) gap = `<span class="gap go warn" data-trunk-tab="behind" data-tip="${esc(`没回合：${T.main} 上有 ${T.behind.count} 个提交不在 ${T.dev}`)}">${icon.arrowLeft(10)}${T.behind.count}</span>`;
-      return `<div class="rail-row${S.branch === name ? ' on' : ''}" data-branch="${esc(name)}" style="--c:${colorFor(k)}">
+      return `<div class="rail-row${S.branch === name ? ' on' : ''}" data-branch="${esc(name)}" style="--c:${colorFor(k)}" data-tip-c="${colorFor(k)}" data-tip="${esc(`${name}\n${k === 'main' ? '上线分支' : '集成分支'}\n点击看它的详情`)}">
         <i class="rbar"></i><span class="rname">${esc(name)}</span>
         ${C.envs.filter((e) => e.branch === name).map((e) => envPill(e, k, true)).join('')}
         <button class="add" data-add-label="${esc(name)}" data-tip="加环境标签">${icon.tag(12)}</button>
         <span class="grow"></span>${loc(localBy.get(name))}${gap}
       </div>`;
     };
+    const branchTip = (b) => {
+      const p = persons[b.owner];
+      const lb = localBy.get(b.name);
+      const base = C.devName ?? C.mainName;
+      const status = { active: '进行中', merged: `已进 ${C.devName ?? ''}，等上线`, released: `已进 ${C.mainName ?? ''}`, stale: '停滞' }[b.status] ?? '';
+      return tipCard({
+        c: colorFor('b:' + b.name),
+        title: b.name,
+        sub: `${avatar(p, 16)}<span>${esc(p?.name ?? '?')}</span><span>·</span><span>${esc(ago(b.time))}</span>`,
+        rows: [
+          ['状态', esc(status)],
+          ['提交', `<span class="up">+${b.own}</span>${b.behind != null && base ? `<span class="down">落后 ${esc(base)} ${b.behind}</span>` : ''}`],
+          b.pr ? ['PR', `#${b.pr.n} ${esc(b.pr.title ?? '')}`] : null,
+          lb && (lb.unpushed > 0 || lb.behind > 0) ? ['本机', `${lb.unpushed > 0 ? `<span class="warn">${lb.unpushed} 个没推送</span>` : ''}${lb.behind > 0 ? `<span>${lb.behind} 个没拉取</span>` : ''}`] : null,
+        ].filter(Boolean),
+        hint: '点击看详情',
+      });
+    };
     const branchRow = (b) => {
       const tip = M.branches.get(b.name).tip;
       const merged = b.status === 'merged' || b.status === 'released';
-      return `<div class="br-row${S.branch === b.name ? ' on' : ''}${merged ? ' merged' : ''}" data-branch="${esc(b.name)}" style="--c:${colorFor('b:' + b.name)}" data-tip="${esc(`${b.name}\n${ago(b.time)}`)}">
-        <i class="dot"></i><span class="bname">${esc(b.name)}</span>${b.pr ? prChip(b.pr, { mini: true }) : ''}${(O.branchTags?.[b.name] ?? []).slice(0, 2).map((t) => `<span class="utag sm">${esc(t)}</span>`).join('')}${loc(localBy.get(b.name))}
+      return `<div class="br-row${S.branch === b.name ? ' on' : ''}${merged ? ' merged' : ''}" data-branch="${esc(b.name)}" style="--c:${colorFor('b:' + b.name)}" data-tip-html data-tip="${esc(branchTip(b))}">
+        <i class="dot"></i><span class="bname" data-mid="${esc(b.name)}">${esc(b.name)}</span>${b.pr ? prChip(b.pr, { mini: true }) : ''}${(O.branchTags?.[b.name] ?? []).slice(0, 2).map((t) => `<span class="utag sm">${esc(t)}</span>`).join('')}${loc(localBy.get(b.name))}
         ${merged ? journey(tip) : `<span class="own" data-tip="自己的提交">+${b.own}</span>`}
         ${merged ? '' : `<button class="eye${pins().has(b.name) ? ' on' : ''}" data-pin-toggle="${esc(b.name)}" data-tip="${pins().has(b.name) ? '在图上：点一下去掉' : '画到图上（加进顶部栏）'}">${icon.eye(12)}</button>`}
       </div>`;
@@ -298,14 +348,14 @@ export function mount(el, ctx) {
   /* ================= 中间：提交图 ================= */
   function drawBar() {
     const chip = S.branch
-      ? `<i class="dot" style="background:${colorFor(keyOfBranch(S.branch))}"></i>${esc(S.branch)}`
+      ? `<i class="dot" style="background:${colorFor(keyOfBranch(S.branch))}"></i><span data-mid="${esc(S.branch)}">${esc(S.branch)}</span>`
       : S.who != null ? `${avatar(O.persons[S.who], 16)}${esc(O.persons[S.who]?.name ?? '')}` : '';
     // 顶部栏 = 图上画哪些分支：主线一直在（点一下看详情）；其余分支按需用「+」加进来，× 去掉
-    const trunkChip = (name, k) => (name ? `<button class="bchip trunk" data-branch-focus="${esc(name)}" style="--c:${colorFor(k)}" data-tip="${esc(`${name}：主线，一直显示；点一下看它的详情`)}"><i></i>${esc(name)}</button>` : '');
+    const trunkChip = (name, k) => (name ? `<button class="bchip trunk" data-branch-focus="${esc(name)}" style="--c:${colorFor(k)}" data-tip-c="${colorFor(k)}" data-tip="${esc(`${name}\n主线，一直显示\n点一下看它的详情`)}"><i></i>${esc(name)}</button>` : '');
     const byName = new Map([...C.show, ...C.stale].map((b) => [b.name, b]));
     const chips = [...pins()].filter((n) => byName.has(n)).map((n) => {
       const b = byName.get(n);
-      return `<span class="bchip pin${S.branch === n ? ' on' : ''}" data-branch-focus="${esc(n)}" style="--c:${colorFor('b:' + n)}" data-tip="${esc(`${n}\n${O.persons[b.owner]?.name ?? ''} · ${ago(b.time)}\n点一下看详情`)}"><i></i>${esc(n.length > 22 ? n.slice(0, 21) + '…' : n)}<button class="unpin" data-unpin="${esc(n)}" data-tip="从图上去掉">${icon.close(10)}</button></span>`;
+      return `<span class="bchip pin${S.branch === n ? ' on' : ''}" data-branch-focus="${esc(n)}" style="--c:${colorFor('b:' + n)}" data-tip-c="${colorFor('b:' + n)}" data-tip="${esc(`${n}\n${O.persons[b.owner]?.name ?? ''} · ${ago(b.time)}\n点一下看详情`)}"><i></i><span class="nm" data-mid="${esc(n)}">${esc(n)}</span><button class="unpin" data-unpin="${esc(n)}" data-tip="从图上去掉">${icon.close(10)}</button></span>`;
     }).join('');
     const mergedN = [...C.merged.values()].reduce((a, b) => a + b, 0);
     const trunkMode = H.mode !== 'full';
@@ -333,16 +383,27 @@ export function mount(el, ctx) {
     const sep = box.querySelector('.bsep');
     for (const c of chips) c.hidden = false;
     if (sep) sep.hidden = false;
-    let folded = 0;
-    // 从后往前收，直到放得下（两条主线永远在）
-    for (let i = chips.length - 1; i >= 0 && box.scrollWidth > box.clientWidth + 1; i--) {
-      chips[i].hidden = true;
-      folded++;
-    }
+    fitMid(box); // 名字先按中间省略截好，下面量到的才是最终宽度
+    // 一次读完每个分支的右边缘，算出前几个放得下（不在循环里反复读 scrollWidth，每读一次都要重排）；两条主线永远在
+    const left = box.getBoundingClientRect().left;
+    const rights = chips.map((c) => c.getBoundingClientRect().right - left);
+    const fit = (w) => {
+      const n = rights.findIndex((r) => r > w + 1);
+      return n < 0 ? chips.length : n;
+    };
+    const setMore = (folded) => {
+      more.classList.toggle('folded', folded > 0);
+      more.innerHTML = folded ? `${icon.plus(11)}<span>${folded}</span>` : chips.length ? icon.plus(12) : `${icon.plus(11)}<span>添加分支</span>`;
+    };
+    let kept = fit(box.clientWidth);
+    setMore(chips.length - kept);
+    // 「+N」按钮变宽会把这一栏挤窄一点：再算一次
+    const w2 = box.clientWidth;
+    if (fit(w2) < kept) setMore(chips.length - (kept = fit(w2)));
+    chips.forEach((c, i) => { c.hidden = i >= kept; });
+    const folded = chips.length - kept;
     if (sep && chips.length && folded === chips.length) sep.hidden = true;
     const total = C.show.length + C.stale.length;
-    more.classList.toggle('folded', folded > 0);
-    more.innerHTML = folded ? `${icon.plus(11)}<span>${folded}</span>` : chips.length ? icon.plus(12) : `${icon.plus(11)}<span>添加分支</span>`;
     more.dataset.tip = [folded ? `还有 ${folded} 条加了的分支没放下` : '', `从 ${total} 条分支里挑要画在图上的`, '左栏分支旁的眼睛也能加'].filter(Boolean).join('\n');
   }
 
@@ -464,10 +525,10 @@ export function mount(el, ctx) {
     };
     const parentsOf = (id) => (id >= M.N ? [wipBy.get(id).c] : [...new Set(M.P[id].map(up).filter((p) => p !== undefined))]);
     const Lr = layout(order, parentsOf, { pin, rails, keyOf });
-    let focusKey = null;
-    if (S.branch) focusKey = keyOfBranch(S.branch);
-    const focus = focusKey ? (id) => id < M.N && C.key[id] === focusKey : S.who != null ? (id) => id < M.N && M.a[id] === S.who : null;
-    V = { order, rows: Lr.rows, width: Math.min(Math.max(Lr.width, 2), MAX_LANES), wips: wipBy, rowOf, focus, focusKey };
+    const bf = S.branch ? branchFocus(S.branch) : null;
+    const focusKey = S.branch ? keyOfBranch(S.branch) : null;
+    const focus = bf ? (id) => id < M.N && bf.ids.has(id) : S.who != null ? (id) => id < M.N && M.a[id] === S.who : null;
+    V = { order, rows: Lr.rows, width: Math.min(Math.max(Lr.width, 2), MAX_LANES), wips: wipBy, rowOf, focus, focusKey, litKeys: bf?.keys ?? null };
     V.gw = PAD * 2 + (V.width - 1) * LW;
     gcol.style.setProperty('--gw', V.gw + 'px');
     placeMsgHandle();
@@ -660,7 +721,11 @@ export function mount(el, ctx) {
 
     let focusKey = S.branch ? keyOfBranch(S.branch) : null;
     const focusRail = rails.find((R) => R.key === focusKey);
-    const focus = focusRail ? (id) => id < M.N && !!focusRail.on[id] : focusKey ? (id) => id < M.N && 'b:' + sideOf.get(id) === focusKey : S.who != null ? (id) => id < M.N && M.a[id] === S.who : null;
+    // 还没合进去的分支画在右边（sideOf）；已经合进主线的在这里没有自己的线，按 branchFocus 点亮它那段提交，连线不按 key 压暗
+    const onSide = !focusRail && S.branch && [...sideOf.values()].includes(S.branch);
+    const bf = S.branch && !focusRail && !onSide ? branchFocus(S.branch) : null;
+    if (bf) focusKey = null;
+    const focus = focusRail ? (id) => id < M.N && !!focusRail.on[id] : onSide ? (id) => id < M.N && 'b:' + sideOf.get(id) === focusKey : bf ? (id) => id < M.N && bf.ids.has(id) : S.who != null ? (id) => id < M.N && M.a[id] === S.who : null;
     const used = Math.min(ends.length, TX.maxSide);
     const gw = (used ? sideX(used - 1) : TX.rail0 + (rails.length - 1) * TX.gap) + 16;
     V = { mode: 'trunk', order, rowOf, rows, rails, nodes, conns, lines, envAt, sideOf, wips: new Map(wips.map((x) => [x.id, x])), focus, focusKey, gw };
@@ -762,7 +827,7 @@ export function mount(el, ctx) {
       const k = n === C.mainName ? 'main' : n === C.devName ? 'dev' : C.colorOf.has('b:' + n) ? 'b:' + n : null;
       if (!k) continue;
       const here = M.worktrees.filter((w) => w.branch === n);
-      out.push(`<span class="bn${TRUNKS.has(k) ? ' trunk' : ''}" style="--c:${colorFor(k)}" data-tip="${esc(`${n}${here.length ? '\n本机检出：' + here.map((w) => w.path).join('，') : ''}`)}">${icon.cloud(11)}${esc(n)}${here.length ? icon.desktop(10) : ''}</span>`);
+      out.push(`<span class="bn${TRUNKS.has(k) ? ' trunk' : ''}" style="--c:${colorFor(k)}" data-tip-c="${colorFor(k)}" data-tip="${esc(`${n}\n云端分支，指向这个提交${here.length ? '\n本机检出：' + here.map((w) => w.path).join('，') : ''}`)}">${icon.cloud(11)}<span data-mid="${esc(n)}">${esc(n)}</span>${here.length ? icon.desktop(10) : ''}</span>`);
     }
     // 完整视图：已经合并完的分支，在它最后一个提交上标出名字（分支本身可能已经删了）
     const mt = V.mode !== 'trunk' ? C.mergedTip.get(id) : null;
@@ -773,9 +838,26 @@ export function mount(el, ctx) {
         : mt.name.startsWith('@')
           ? `${mt.name.slice(1)} 的提交（认不出分支名，按作者上色）\n已经合进 ${mt.into}`
           : `分支 ${mt.name}\n已经合进 ${mt.into}`;
-      out.push(`<span class="bn done" style="--c:${colorFor('h:' + mt.name)}" data-tip="${esc(`${what}\n这条线往下是它的提交，往上连到合并的地方`)}">${icon.merge(10)}${esc(who)}</span>`);
+      out.push(`<span class="bn done" style="--c:${colorFor('h:' + mt.name)}" data-tip-c="${colorFor('h:' + mt.name)}" data-tip="${esc(`${what}\n这条线往下是它的提交，往上连到合并的地方`)}">${icon.merge(10)}${mt.direct || mt.name.startsWith('@') ? esc(who) : `<span data-mid="${esc(who)}">${esc(who)}</span>`}</span>`);
     }
     return out.join('');
+  }
+
+  /** 图上的节点（悬停线和点那一格）：这个提交属于哪条分支（用那条分支的颜色）、谁、什么时候、走到哪了 */
+  function nodeTip(id) {
+    const k = C.key[id];
+    const branch = k === 'main' ? C.mainName : k === 'dev' ? C.devName : k.startsWith('b:') ? k.slice(2) : k.startsWith('h:@') ? `${k.slice(3)} 的提交` : k.startsWith('h:') ? k.slice(2) : null;
+    const state = k === 'main' || k === 'dev' ? '直接在主线上' : k.startsWith('b:') ? '进行中的分支' : '已经合进主线';
+    const p = M.person(M.a[id]);
+    const st = stops();
+    return tipCard({
+      c: colorFor(k),
+      title: branch ?? '已合并的历史',
+      sub: `${avatar(p, 16)}<span>${esc(p?.name ?? '?')}</span><span>·</span><span>${esc(ago(M.t[id]))}</span><span>·</span><span class="mono">${M.short(id)}</span>`,
+      lines: [M.s[id].length > 80 ? M.s[id].slice(0, 79) + '…' : M.s[id], M.P[id].length > 1 ? `合并提交 · ${state}` : state],
+      dots: st.map((s) => ({ on: M.isAncestor(id, s.tip), c: colorFor(s.k), env: s.env, label: `${s.env ? '环境 ' : ''}${s.name}${M.isAncestor(id, s.tip) ? '' : '（还没有）'}` })),
+      hint: '点击看改了哪些文件',
+    });
   }
 
   function rowHtml(r) {
@@ -800,10 +882,10 @@ export function mount(el, ctx) {
         text = `<span class="mk ${tk.kind}" style="--c:${colorFor(tk.toKey)}" data-tip="${esc(tk.kind === 'release' ? `发布：把 ${tk.from} 合进 ${tk.to}` : `回合：把 ${tk.from} 合回 ${tk.to}`)}">${tk.kind === 'release' ? '发布' : '回合'}</span><span class="gs">${esc(tk.from)} ${icon.arrowRight(10)} ${esc(tk.to)}</span>${n}`;
       } else {
         const name = tk.branch;
-        text = `<span class="mk feat" style="--c:${name ? branchColor(name) : 'var(--muted)'}" data-tip="${esc(`合并：把 ${name ?? '一条分支'} 合进 ${tk.to}\n${M.s[id]}`)}">${icon.merge(10)}${esc(name ?? '合并')}</span>${n}<span class="gs sub">${esc(tk.title ?? '')}</span>`;
+        text = `<span class="mk feat" style="--c:${name ? branchColor(name) : 'var(--muted)'}" data-tip-c="${name ? branchColor(name) : 'var(--muted)'}" data-tip="${esc(`合并：把 ${name ?? '一条分支'} 合进 ${tk.to}\n${M.s[id]}`)}">${icon.merge(10)}<span data-mid="${esc(name ?? '合并')}">${esc(name ?? '合并')}</span></span>${n}<span class="gs sub">${esc(tk.title ?? '')}</span>`;
       }
     }
-    return `<div class="${cls}" data-r="${r}" style="${style}"><div class="gg"></div><div class="gm">${labels(id)}${text}</div><div class="ga" data-tip="${esc(p?.name ?? '')}">${avatar(p, 18)}</div><div class="gt" data-tip="${fullStamp(M.t[id])}">${when(M.t[id])}</div></div>`;
+    return `<div class="${cls}" data-r="${r}" style="${style}"><div class="gg" data-tip-html data-tip="${esc(nodeTip(id))}"></div><div class="gm">${labels(id)}${text}</div><div class="ga" data-tip="${esc(p?.name ?? '')}">${avatar(p, 18)}</div><div class="gt" data-tip="${fullStamp(M.t[id])}">${when(M.t[id])}</div></div>`;
   }
 
   function svgHtml(first, last) {
@@ -843,7 +925,7 @@ export function mount(el, ctx) {
     // 细线在下、粗轨道在上；选中分支时别的线淡下去
     for (const [g, d] of [...paths].sort((a, b) => Number(a[0].split('|')[1]) - Number(b[0].split('|')[1]))) {
       const [k, w] = g.split('|');
-      const op = V.focusKey && k !== V.focusKey ? 0.22 : k === 'hist' ? 0.5 : 1;
+      const op = V.litKeys && !V.litKeys.has(k) ? 0.22 : k === 'hist' ? 0.5 : 1;
       out += `<path d="${d}" fill="none" stroke="${colorFor(k)}" stroke-width="${w}" stroke-linecap="round"${k === 'wip' ? ' stroke-dasharray="3 4"' : ''}${op < 1 ? ` opacity="${op}"` : ''}/>`;
     }
     return `<svg class="gsvg" width="${V.gw}" height="${(last - first) * RH}" style="top:${first * RH}px">${out}${nodes.join('')}</svg>`;
@@ -916,7 +998,12 @@ export function mount(el, ctx) {
     else if (TRUNKS.has(k)) {
       commits = [];
       for (let c = tip; c !== undefined && c >= 0 && commits.length < 40; c = M.P[c][0]) commits.push(c);
-    } else commits = [...(C.owned.get(name) ?? [])].sort((x, y) => x - y).slice(0, 80);
+    } else {
+      commits = [...(C.owned.get(name) ?? [])].sort((x, y) => x - y).slice(0, 80);
+      // 已经合进主线的：列出图上点亮的那段（从它合进来的 / 它自己那条线），并注明已合并
+      if (!commits.length) commits = [...branchFocus(name).ids].sort((x, y) => x - y).slice(0, 80);
+    }
+    const allMerged = !TRUNKS.has(k) && !(C.owned.get(name) ?? []).length;
     D.hidden = false;
     D.innerHTML = `${dtop(null)}
       <div class="bhead" style="--c:${colorFor(k)}"><i class="${TRUNKS.has(k) ? 'rbar' : 'dot'}"></i><h3>${esc(name)}</h3>${(O.branchTags?.[name] ?? []).map((t) => `<span class="utag">${esc(t)}</span>`).join('')}${C.envs.filter((e) => e.branch === name).map((e) => envPill(e, TRUNKS.has(k) ? k : null)).join('')}
@@ -924,7 +1011,7 @@ export function mount(el, ctx) {
       <div class="dmeta">${avatar(owner, 20)}<span>${esc(owner?.name ?? '')}</span><span class="muted" data-tip="${fullStamp(M.ct[tip])}">${ago(M.ct[tip])}</span>${b ? `<span class="muted" data-tip="${esc(`自己的提交 ${b.own} 个；${C.devName ?? C.mainName ?? '主线'} 比它多 ${b.behind ?? 0} 个`)}">${icon.arrowUp(10)}${b.own} ${icon.arrowDown(10)}${b.behind ?? 0}</span>` : ''}</div>
       ${stepsHtml(tip)}
       ${b?.pr ? prChip(b.pr, { full: true }) : ''}
-      ${isTrunkPair ? trunkTabs(name, tip) : `<div class="clist">${commits.map(crow).join('') || `<div class="quiet">${icon.check(12)} 已经全部合进主线</div>`}</div>`}`;
+      ${isTrunkPair ? trunkTabs(name, tip) : `${allMerged ? `<div class="quiet mergedn">${icon.check(12)} 已经全部合进主线${commits.length ? '，下面是它的提交' : ''}</div>` : ''}<div class="clist">${commits.map(crow).join('')}</div>`}`;
   }
   const crow = (c) => `<button class="crow" data-open="${c}">${journey(c)}<span class="s">${esc(M.s[c])}</span>${avatar(M.person(M.a[c]), 16)}<span class="t">${when(M.t[c])}</span></button>`;
 
