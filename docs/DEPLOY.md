@@ -63,6 +63,12 @@ BranchMap 有两种跑法，代码是同一份，区别只在 `config.json` 里�
 
 | 机器 | 地址 | 运行的提交 | 部署日期 | 登记人 |
 |---|---|---|---|---|
-| （暂无） | | | | |
+| 阿里云 ECS（华北2，个人账号，2 核 3.4G，和 `imoky` 的测试站共用，各自独立的 nginx 站点文件） | `https://<部署域名>` → `<服务器 IP>`（服务只听 `127.0.0.1:4317`） | `db49310` | 2026-10-07 | Claude（用户授权） |
 
 改了服务器（换机器、换域名、换提交）就同步改这张表，并更新文件头的 `verified`。
+
+129 上的布置：`branchmap` 系统用户；程序 `/opt/branchmap/app`（git clone，`git pull` 更新）、私有 Node 22 与 gh 在 `/opt/branchmap`；
+数据 `/var/lib/branchmap`（`cache/` 下是云端副本，连上 GitHub App 后有 `github-app.json`）；机密 `/etc/branchmap/env`（root:branchmap 640）；
+systemd `branchmap.service` 与 nginx `/etc/nginx/conf.d/branchmap.conf` 就是 `deploy/` 里的两份（域名换成 `<部署域名>`）；证书 Let's Encrypt，certbot 自动续期。
+那台机器 HTTPS 访问 `github.com` 基本不通，`branchmap` 用户设了 `url."git@github.com:".insteadOf`，拉代码走 SSH（账号级 key `branchmap@<部署域名>`）；
+`api.github.com` 访问稳定，PR / CI / 头像走 GitHub App。同一域名放在公司账号的机器（乌兰察布）上会被备案拦截，2026-10-07 试过，已撤回并清理。
