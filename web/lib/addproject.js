@@ -13,9 +13,9 @@ export async function openAddProject({ groups = [], onAdded }) {
   wrap.innerHTML = `<div class="modal" role="dialog" aria-label="添加项目">
     <div class="mh"><h3>添加项目</h3><button class="icon-btn" data-x data-tip="关闭 (Esc)">${icon.close(15)}</button></div>
     <div class="ghsec" data-gh><div class="quiet"><span class="spin" style="display:inline-grid">${icon.sync(12)}</span></div></div>
-    <label class="field big">${icon.branch(15)}<input data-remote placeholder="或者粘贴仓库地址：https://github.com/组织/仓库" autocomplete="off" spellcheck="false"></label>
+    <label class="field big">${icon.branch(15)}<input data-remote placeholder="仓库地址：https://github.com/组织/仓库" autocomplete="off" spellcheck="false"></label>
     <div class="frow">
-      <label class="field"><input data-name placeholder="名称（默认取仓库名）" maxlength="40"></label>
+      <label class="field"><input data-name placeholder="名称（可选）" maxlength="40"></label>
       <label class="field"><input data-group placeholder="分组" maxlength="20" list="bm-groups"></label>
       <datalist id="bm-groups">${groups.map((g) => `<option value="${esc(g)}">`).join('')}</datalist>
     </div>
@@ -50,25 +50,25 @@ export async function openAddProject({ groups = [], onAdded }) {
     if (!gh.connected) {
       box.innerHTML = gh.admin
         ? `<div class="ghcon">
-            <div class="ght">${icon.github(18)}<div><b>连接 GitHub</b><span>在 GitHub 上授权 BranchMap 只读访问仓库，之后在这里勾选就能添加</span></div></div>
-            <div class="ghgo"><label class="field"><input data-org placeholder="组织名（建议填，比如公司的 GitHub 组织）" autocomplete="off" spellcheck="false"></label><button class="btn primary" data-connect>${icon.github(13)}连接</button></div>
+            <div class="ght">${icon.github(18)}<div><b>连接 GitHub</b><span>只读访问仓库</span></div></div>
+            <div class="ghgo"><label class="field"><input data-org placeholder="GitHub 组织（可选）" autocomplete="off" spellcheck="false"></label><button class="btn primary" data-connect>${icon.github(13)}连接</button></div>
           </div>`
-        : `<div class="ghcon"><div class="ght">${icon.github(18)}<div><b>还没有连接 GitHub</b><span>请管理员在这里连接</span></div></div></div>`;
+        : `<div class="ghcon"><div class="ght">${icon.github(18)}<div><b>未连接 GitHub</b><span>仅限管理员连接</span></div></div></div>`;
       return;
     }
     const list = gh.repos ?? [];
     const shown = q ? list.filter((r) => (r.slug + ' ' + r.description).toLowerCase().includes(q)) : list;
     box.innerHTML = `<p class="dl">
-        ${icon.github(12)}<span data-tip="${esc(`${gh.app.name}\n装在：${gh.installations.map((i) => i.account).join('、') || '还没装到任何组织'}`)}">${gh.installations.map((i) => esc(i.account)).join(' · ') || '还没安装'}</span>
+        ${icon.github(12)}<span data-tip="${esc(`${gh.app.name}\n${gh.installations.map((i) => i.account).join('、') || '未安装'}`)}">${gh.installations.map((i) => esc(i.account)).join(' · ') || '未安装'}</span>
         <span class="grow"></span>
-        ${gh.admin ? `<a href="${esc(gh.installUrl)}" data-tip="去 GitHub 选组织、增减授权的仓库">${icon.gear(12)}管理授权</a>` : ''}
+        ${gh.admin ? `<a href="${esc(gh.installUrl)}" data-tip="GitHub">${icon.gear(12)}管理授权</a>` : ''}
       </p>
       ${gh.error ? `<div class="quiet">${icon.alert(12)} ${esc(gh.error)}</div>` : ''}
       ${list.length > 8 ? `<label class="field ghq">${icon.search(13)}<input data-q placeholder="搜索仓库" value="${esc(q)}" autocomplete="off" spellcheck="false"></label>` : ''}
-      <div class="ghlist">${shown.map((r) => `<button class="drow${r.added ? ' added' : picked.has(r.slug) ? ' on' : ''}" data-repo="${esc(r.slug)}" ${r.added ? 'disabled' : ''} data-tip="${esc(r.added ? '已经是项目了' : r.description || r.slug)}">
+      <div class="ghlist">${shown.map((r) => `<button class="drow${r.added ? ' added' : picked.has(r.slug) ? ' on' : ''}" data-repo="${esc(r.slug)}" ${r.added ? 'disabled' : ''} data-tip="${esc(r.added ? '已添加' : r.description || r.slug)}">
           <span class="ck">${r.added || picked.has(r.slug) ? icon.check(11) : ''}</span>
           <span class="dn">${esc(r.slug.split('/')[1])}</span><span class="dr">${esc(r.slug.split('/')[0])}${r.private ? ' · 私有' : ''}</span>
-        </button>`).join('') || `<div class="quiet">${list.length ? '没有匹配的仓库' : '还没有授权任何仓库：点「管理授权」去勾选'}</div>`}</div>`;
+        </button>`).join('') || `<div class="quiet">${list.length ? '没有匹配的仓库' : '没有授权的仓库'}</div>`}</div>`;
   }
   request('/api/github').then((s) => {
     gh = s;
@@ -102,7 +102,7 @@ export async function openAddProject({ groups = [], onAdded }) {
   /* ---------- 本机发现、还没加进来的仓库 ---------- */
   request('/api/discovered').then((list) => {
     $('[data-disc]').innerHTML = list.length
-      ? `<p class="dl" data-tip="扫描目录里找到、还没加成项目的仓库">${icon.desktop(12)} ${list.length}</p>${list.map((d, i) => `<button class="drow" data-pick="${i}" data-tip="${esc(d.path ?? '')}">${icon.folder(13)}<span class="dn">${esc(d.name)}</span><span class="dr">${esc(d.remote ?? '')}</span>${icon.arrowRight(12)}</button>`).join('')}`
+      ? `<p class="dl" data-tip="本机仓库">${icon.desktop(12)} ${list.length}</p>${list.map((d, i) => `<button class="drow" data-pick="${i}" data-tip="${esc(d.path ?? '')}">${icon.folder(13)}<span class="dn">${esc(d.name)}</span><span class="dr">${esc(d.remote ?? '')}</span>${icon.arrowRight(12)}</button>`).join('')}`
       : '';
     $('[data-disc]').onclick = (e) => {
       const b = e.target.closest('[data-pick]');
@@ -145,7 +145,7 @@ export async function openAddProject({ groups = [], onAdded }) {
       close();
       onAdded?.(first);
     } catch (e) {
-      toast(done ? `加了 ${done} 个，后面的没加上：${e.message}` : e.message);
+      toast(done ? `已添加 ${done} 个，其余失败：${e.message}` : e.message);
       btn.disabled = false;
     }
   };

@@ -414,7 +414,7 @@ export function prChip(pr, { mini = false, full = false } = {}) {
   const ci = pr.ci;
   const lines = [`PR #${pr.n} ${pr.title ?? ''}`, `状态：${PR_STATE[pr.state] ?? pr.state}`];
   if (pr.review && REVIEW[pr.review]) lines.push(REVIEW[pr.review]);
-  if (ci) lines.push(ci.state === 'pass' ? `CI：通过（${ci.pass} 项）` : ci.state === 'fail' ? `CI：失败 ${ci.fail} 项${ci.failed.length ? '：' + ci.failed.join('、') : ''}` : `CI：运行中 ${ci.pending} 项`);
+  if (ci) lines.push(ci.state === 'pass' ? `CI 通过 ${ci.pass}` : ci.state === 'fail' ? `CI 失败 ${ci.fail}${ci.failed.length ? '：' + ci.failed.join('、') : ''}` : `CI 运行中 ${ci.pending}`);
   const ciIc = ci ? `<i class="ci ${ci.state}">${ci.state === 'pass' ? icon.check(10) : ci.state === 'fail' ? icon.close(10) : ''}</i>` : '';
   const rvIc = pr.review === 'APPROVED' ? `<i class="rv ok">${icon.checkCircle(10)}</i>` : pr.review === 'CHANGES_REQUESTED' ? `<i class="rv bad">${icon.alert(10)}</i>` : '';
   if (mini) return ci || rvIc ? `<span class="prm" data-tip="${esc(lines.join('\n'))}">${ciIc}${rvIc}</span>` : '';

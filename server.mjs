@@ -66,7 +66,7 @@ const routes = [
   ['POST', /^\/api\/projects$/, async (p, q, m, res, req) => {
     const body = await readBody(req);
     const remote = String(body?.remote ?? '').trim();
-    if (!remote) throw Object.assign(new Error('填一个仓库地址'), { status: 400 });
+    if (!remote) throw Object.assign(new Error('缺少仓库地址'), { status: 400 });
     const id = ws.addProject({ remote, name: String(body.name ?? '').trim().slice(0, 40), group: String(body.group ?? '').trim().slice(0, 20) }, here);
     return { ok: true, id };
   }],
@@ -77,13 +77,13 @@ const routes = [
     let flow;
     if (body.flow !== undefined) {
       flow = Array.isArray(body.flow) ? body.flow.filter(Boolean).map(String) : [];
-      if (flow.length > 2 || new Set(flow).size !== flow.length || flow.some((b) => !G.branches.has(b))) throw Object.assign(new Error('主线分支选得不对'), { status: 400 });
+      if (flow.length > 2 || new Set(flow).size !== flow.length || flow.some((b) => !G.branches.has(b))) throw Object.assign(new Error('主线分支无效'), { status: 400 });
     }
     const envs = body.environments;
     if (envs !== undefined) {
-      if (!Array.isArray(envs) || envs.some((e) => typeof e?.name !== 'string' || !e.name.trim() || e.name.length > 40)) throw Object.assign(new Error('环境格式不对'), { status: 400 });
+      if (!Array.isArray(envs) || envs.some((e) => typeof e?.name !== 'string' || !e.name.trim() || e.name.length > 40)) throw Object.assign(new Error('环境无效'), { status: 400 });
       for (const e of envs) {
-        if (e.probe && !/^https?:\/\/\S+$/i.test(String(e.probe).trim())) throw Object.assign(new Error('探测地址要以 http:// 或 https:// 开头'), { status: 400 });
+        if (e.probe && !/^https?:\/\/\S+$/i.test(String(e.probe).trim())) throw Object.assign(new Error('探测地址须以 http(s):// 开头'), { status: 400 });
       }
     }
     await p.setSettings({ flow, environments: envs }, here);
@@ -94,14 +94,14 @@ const routes = [
     const body = await readBody(req);
     const branch = String(body?.branch ?? '');
     const tags = Array.isArray(body?.tags) ? [...new Set(body.tags.map((t) => String(t).trim()).filter(Boolean))].slice(0, 8) : null;
-    if (!branch || !tags || tags.some((t) => t.length > 16)) throw Object.assign(new Error('标签格式不对'), { status: 400 });
+    if (!branch || !tags || tags.some((t) => t.length > 16)) throw Object.assign(new Error('标签无效'), { status: 400 });
     p.setBranchTags(branch, tags, here);
     return { ok: true };
   }],
   // 左侧栏拖动排序（顺带改分组）：body = { order: [{ id, group }] }
   ['POST', /^\/api\/projects\/order$/, async (p, q, m, res, req) => {
     const body = await readBody(req);
-    if (!Array.isArray(body?.order) || body.order.some((x) => typeof x?.id !== 'string')) throw Object.assign(new Error('顺序格式不对'), { status: 400 });
+    if (!Array.isArray(body?.order) || body.order.some((x) => typeof x?.id !== 'string')) throw Object.assign(new Error('排序无效'), { status: 400 });
     ws.reorder(body.order, here);
     return { ok: true };
   }],
@@ -109,7 +109,7 @@ const routes = [
   ['POST', P('/probe-test'), async (p, q, m, res, req) => {
     const body = await readBody(req);
     const url = String(body?.url ?? '').trim();
-    if (!/^https?:\/\/\S+$/i.test(url)) throw Object.assign(new Error('探测地址要以 http:// 或 https:// 开头'), { status: 400 });
+    if (!/^https?:\/\/\S+$/i.test(url)) throw Object.assign(new Error('探测地址须以 http(s):// 开头'), { status: 400 });
     return p.testProbe(url);
   }],
   ['POST', P('/remove'), (p) => {
@@ -137,9 +137,9 @@ const routes = [
   ['POST', P('/labels'), async (p, q, m, res, req) => {
     const body = await readBody(req);
     const list = Array.isArray(body?.environments) ? body.environments : null;
-    if (!list || list.some((e) => typeof e?.name !== 'string' || !e.name.trim() || e.name.length > 40)) throw Object.assign(new Error('标签格式不对'), { status: 400 });
+    if (!list || list.some((e) => typeof e?.name !== 'string' || !e.name.trim() || e.name.length > 40)) throw Object.assign(new Error('标签无效'), { status: 400 });
     for (const e of list) {
-      if (e.probe && !/^https?:\/\/\S+$/i.test(String(e.probe).trim())) throw Object.assign(new Error('探测地址要以 http:// 或 https:// 开头'), { status: 400 });
+      if (e.probe && !/^https?:\/\/\S+$/i.test(String(e.probe).trim())) throw Object.assign(new Error('探测地址须以 http(s):// 开头'), { status: 400 });
     }
     await p.setEnvironments(list, here);
     return { ok: true };
@@ -167,12 +167,12 @@ async function me() {
 // 对外的地址：开了门禁就是门禁里配的域名；本机就是 localhost（本机收不到 Webhook，创建时不开）
 const publicOrigin = () => (auth ? auth.origin : `http://localhost:${PORT}`);
 
-function htmlPage(res, status, title, text, link = '/', linkText = '回到 BranchMap') {
+function htmlPage(res, status, title, text, link = '/', linkText = 'BranchMap') {
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
   res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BranchMap</title>
 <style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:14px/1.6 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#f7f7f7;color:#111}main{max-width:420px;padding:24px;text-align:center}h1{font-size:18px;margin:0 0 8px}p{color:#666;margin:0 0 20px;white-space:pre-line}a{display:inline-block;padding:9px 18px;border-radius:9px;background:#111;color:#fff;text-decoration:none}@media(prefers-color-scheme:dark){body{background:#111;color:#eee}p{color:#999}a{background:#eee;color:#111}}</style>
-<main><h1>${esc(title)}</h1><p>${esc(text)}</p><a href="${esc(link)}">${esc(linkText)}</a></main>`);
+<main><h1>${esc(title)}</h1>${text ? `<p>${esc(text)}</p>` : ""}<a href="${esc(link)}">${esc(linkText)}</a></main>`);
 }
 
 async function githubConnect(req, res, url) {
@@ -182,18 +182,18 @@ async function githubConnect(req, res, url) {
   const admin = !auth || auth.isAdmin(auth.user(req));
   try {
     if (url.pathname === '/github/connect') {
-      if (!admin) return htmlPage(res, 403, '只有管理员能连接 GitHub', '请管理员来操作');
+      if (!admin) return htmlPage(res, 403, '无权操作', '仅限管理员');
       if (gh.connected) {
         res.writeHead(302, { location: gh.installUrl(), 'cache-control': 'no-store' });
         return res.end();
       }
       const org = String(url.searchParams.get('org') ?? '').trim();
-      if (org && !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(org)) return htmlPage(res, 400, '组织名不对', org);
+      if (org && !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(org)) return htmlPage(res, 400, '组织名无效', org);
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
       return res.end(gh.createPage(publicOrigin(), org || null, { webhooks: !!auth }));
     }
     if (url.pathname === '/github/created') {
-      if (!admin) return htmlPage(res, 403, '只有管理员能连接 GitHub', '请管理员来操作');
+      if (!admin) return htmlPage(res, 403, '无权操作', '仅限管理员');
       const app = await gh.finishCreate(url.searchParams.get('code'), url.searchParams.get('state'));
       // 应用建好了：接着去选组织、勾仓库
       res.writeHead(302, { location: `${app.url}/installations/new`, 'cache-control': 'no-store' });
@@ -206,10 +206,10 @@ async function githubConnect(req, res, url) {
       res.writeHead(302, { location: '/?github=installed', 'cache-control': 'no-store' });
       return res.end();
     }
-    return htmlPage(res, 404, '没有这个页面', '');
+    return htmlPage(res, 404, '页面不存在', '');
   } catch (e) {
     console.warn(`  连接 GitHub 出错：${firstLine(e)}`);
-    return htmlPage(res, e.status && e.status < 500 ? e.status : 502, '连接 GitHub 没成功', firstLine(e), '/github/connect', '再试一次');
+    return htmlPage(res, e.status && e.status < 500 ? e.status : 502, '连接失败', firstLine(e), '/github/connect', '重试');
   }
 }
 
@@ -223,12 +223,12 @@ async function githubWebhook(req, res) {
   } catch (e) {
     return send(res, e.status ?? 400, { error: firstLine(e) });
   }
-  if (!ws.github.verify(raw, req.headers['x-hub-signature-256'])) return send(res, 401, { error: '签名不对' });
+  if (!ws.github.verify(raw, req.headers['x-hub-signature-256'])) return send(res, 401, { error: '签名无效' });
   let body;
   try {
     body = JSON.parse(raw.toString('utf8'));
   } catch {
-    return send(res, 400, { error: '不是 JSON' });
+    return send(res, 400, { error: '格式无效' });
   }
   send(res, 202, { ok: true });
   const event = String(req.headers['x-github-event'] ?? '');
@@ -260,7 +260,7 @@ function readRaw(req, limit) {
     req.on('data', (c) => {
       size += c.length;
       if (size > limit) {
-        reject(Object.assign(new Error('请求太大'), { status: 413 }));
+        reject(Object.assign(new Error('请求过大'), { status: 413 }));
         req.destroy();
       } else chunks.push(c);
     });
@@ -276,7 +276,7 @@ function readBody(req) {
     req.on('data', (c) => {
       size += c.length;
       if (size > 64 * 1024) {
-        reject(Object.assign(new Error('请求太大'), { status: 413 }));
+        reject(Object.assign(new Error('请求过大'), { status: 413 }));
         req.destroy();
       } else chunks.push(c);
     });
@@ -284,7 +284,7 @@ function readBody(req) {
       try {
         resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
       } catch {
-        reject(Object.assign(new Error('不是合法的 JSON'), { status: 400 }));
+        reject(Object.assign(new Error('格式无效'), { status: 400 }));
       }
     });
     req.on('error', reject);
@@ -310,7 +310,7 @@ const MIME = {
 async function blobRoute(p, q, m, res) {
   const b = await p.repo.blob(await refOf(p, q.get('ref')), q.get('path'));
   if (q.get('raw') === '1') {
-    if (b.tooLarge) throw Object.assign(new Error('文件太大'), { status: 413 });
+    if (b.tooLarge) throw Object.assign(new Error('文件过大'), { status: 413 });
     const type = MIME[extname(q.get('path')).toLowerCase()];
     // 只把图片按原样返回；其余一律当二进制，不在本机域名下渲染仓库里的 HTML
     res.writeHead(200, { 'content-type': type?.startsWith('image/') ? type : 'application/octet-stream', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'", 'cache-control': 'no-store' });
@@ -336,14 +336,14 @@ async function serveStatic(pathname, res) {
     const rel = pathname === '/' ? 'index.html' : decodeURIComponent(pathname.slice(1));
     file = resolve(here, 'web', rel);
     const inside = relative(join(here, 'web'), file);
-    if (inside.startsWith('..') || isAbsolute(inside)) return send(res, 404, { error: '没有这个文件' });
+    if (inside.startsWith('..') || isAbsolute(inside)) return send(res, 404, { error: '文件不存在' });
   }
   try {
     const body = await readFile(file);
     res.writeHead(200, { 'content-type': MIME[extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-cache' });
     res.end(body);
   } catch {
-    send(res, 404, { error: '没有这个文件' });
+    send(res, 404, { error: '文件不存在' });
   }
 }
 
@@ -375,16 +375,16 @@ if (auth) allowedHosts.add(auth.host);
 
 const server = http.createServer(async (req, res) => {
   // 只接本机：挡住 DNS 重绑定和别的网页跨站来调接口
-  if (!allowedHosts.has(req.headers.host)) return send(res, 403, { error: 'host 不对' });
+  if (!allowedHosts.has(req.headers.host)) return send(res, 403, { error: 'Host 无效' });
   const origin = req.headers.origin;
-  if (origin && !allowedHosts.has(origin.replace(/^https?:\/\//, ''))) return send(res, 403, { error: 'origin 不对' });
+  if (origin && !allowedHosts.has(origin.replace(/^https?:\/\//, ''))) return send(res, 403, { error: 'Origin 无效' });
 
   const url = new URL(req.url, `http://${req.headers.host}`);
   // GitHub 的 Webhook：靠签名认人，不走飞书门禁
   if (url.pathname === '/api/github/webhook' && req.method === 'POST') return githubWebhook(req, res);
   if (auth) {
     if (await auth.gate(req, res, url)) return;
-    if (req.method !== 'GET' && url.pathname.startsWith('/api/') && !OPEN_POST.test(url.pathname) && !auth.isAdmin(auth.user(req))) return send(res, 403, { error: '只有管理员能改配置' });
+    if (req.method !== 'GET' && url.pathname.startsWith('/api/') && !OPEN_POST.test(url.pathname) && !auth.isAdmin(auth.user(req))) return send(res, 403, { error: '仅限管理员' });
   }
   if (url.pathname === '/api/events') return events(req, res);
   if (url.pathname.startsWith('/github/')) return githubConnect(req, res, url);
@@ -405,7 +405,7 @@ const server = http.createServer(async (req, res) => {
       let project = null;
       if (re.source.startsWith('^\\/api\\/p\\/')) {
         project = ws.get(decodeURIComponent(m[1]));
-        if (!project) return send(res, 404, { error: '没有这个项目：' + decodeURIComponent(m[1]) });
+        if (!project) return send(res, 404, { error: '项目不存在：' + decodeURIComponent(m[1]) });
       }
       const out = await handler(project, url.searchParams, m, res, req);
       if (out !== undefined) send(res, 200, out);
@@ -418,7 +418,7 @@ const server = http.createServer(async (req, res) => {
     }
     return;
   }
-  send(res, wrongMethod ? 405 : 404, { error: wrongMethod ? '方法不对' : '没有这个接口' });
+  send(res, wrongMethod ? 405 : 404, { error: wrongMethod ? '方法不支持' : '接口不存在' });
 });
 
 server.on('error', (e) => {

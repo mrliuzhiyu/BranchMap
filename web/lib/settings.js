@@ -24,12 +24,12 @@ export function openSettings({ id, name, model }) {
   wrap.innerHTML = `<div class="modal settings" role="dialog" aria-label="项目设置">
     <div class="mh"><h3>${icon.repo(15)} ${esc(name)}</h3><button class="icon-btn" data-x data-tip="关闭 (Esc)">${icon.close(15)}</button></div>
     <section>
-      <p class="sl">${icon.branch(12)}主线<span class="sh" data-tip="主线是代码的流向：日常先合进集成分支（部署到测试），测过再合进上线分支（部署到生产）。提交图上这两条画成贯穿全图的粗线。">?</span></p>
+      <p class="sl">${icon.branch(12)}主线<span class="sh" data-tip="上线分支部署到生产，集成分支部署到测试">?</span></p>
       <div class="srow"><span class="slab"><i class="rbar" style="--c:var(--s1)"></i>上线分支</span><select class="sselect" data-prod>${opts(M.trunk.prod, false)}</select></div>
       <div class="srow"><span class="slab"><i class="rbar" style="--c:var(--s2)"></i>集成分支</span><select class="sselect" data-dev>${opts(M.trunk.dev, true)}</select></div>
     </section>
     <section>
-      <p class="sl">${icon.server(12)}环境<span class="sh" data-tip="环境是跑代码的地方（测试服务器、生产服务器、发布渠道）。填了探测地址，就能读出线上实际运行的是哪个提交；不填，就先挂在它的分支最新提交上。">?</span></p>
+      <p class="sl">${icon.server(12)}环境<span class="sh" data-tip="填了探测地址，读出线上运行的提交">?</span></p>
       <div class="envs" data-envs></div>
       <button class="more" data-add-env>${icon.plus(12)}<span>添加环境</span></button>
     </section>
@@ -42,11 +42,11 @@ export function openSettings({ id, name, model }) {
   const drawEnvs = () => {
     $('[data-envs]').innerHTML = envs.map((e, i) => `<div class="ewrap"><div class="erow" data-i="${i}">
       <label class="field">${icon.server(13)}<input data-f="name" value="${esc(e.name)}" placeholder="生产" maxlength="20"></label>
-      <select class="sselect" data-f="branch" data-tip="从哪条分支部署">${names.map((n) => `<option value="${esc(n)}" ${n === e.branch ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
+      <select class="sselect" data-f="branch" data-tip="部署分支">${names.map((n) => `<option value="${esc(n)}" ${n === e.branch ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>
       <label class="field"><input data-f="probe" value="${esc(e.probe ?? '')}" placeholder="https://…/health（可选）" spellcheck="false"></label>
-      <button class="icon-btn" data-test data-tip="测试探测地址：发一次只读请求，看能不能读出线上跑的提交">${tests.get(i) === 'running' ? `<span class="spin" style="display:inline-grid">${icon.sync(13)}</span>` : icon.pulse(13)}</button>
-      <button class="icon-btn" data-del data-tip="删除这个环境">${icon.close(13)}</button>
-    </div>${testHtml(tests.get(i))}</div>`).join('') || '<div class="quiet">还没有环境</div>';
+      <button class="icon-btn" data-test data-tip="测试探测地址">${tests.get(i) === 'running' ? `<span class="spin" style="display:inline-grid">${icon.sync(13)}</span>` : icon.pulse(13)}</button>
+      <button class="icon-btn" data-del data-tip="删除环境">${icon.close(13)}</button>
+    </div>${testHtml(tests.get(i))}</div>`).join('') || '<div class="quiet">没有环境</div>';
   };
 
   /** 测试结果：状态一行（读到的提交或读不出的原因）+ 接口返回的内容；读不出时说明服务该返回什么 */
@@ -55,10 +55,10 @@ export function openSettings({ id, name, model }) {
     if (r.failed) return `<div class="etest bad">${icon.xCircle(13)}<span>${esc(r.failed)}</span></div>`;
     const ok = r.state === 'up' && r.commit;
     const head = r.state !== 'up'
-      ? `${icon.xCircle(13)}<span>连不上：${esc(r.error ?? r.detail ?? '')}</span>`
+      ? `${icon.xCircle(13)}<span>离线：${esc(r.error ?? r.detail ?? '')}</span>`
       : ok
-        ? `${icon.checkCircle(13)}<span>读到提交 <b class="mono">${esc(r.short)}</b>${r.subject ? ` ${esc(r.subject)}` : ''}${r.version ? `（版本 ${esc(r.version)}）` : ''}${r.inRepo === false ? '，但云端副本里还没有这个提交' : ''}</span>`
-        : `${icon.alert(13)}<span>在线，但读不出提交：${esc(r.detail ?? '接口没有返回提交号')}</span>`;
+        ? `${icon.checkCircle(13)}<span>提交 <b class="mono">${esc(r.short)}</b>${r.subject ? ` ${esc(r.subject)}` : ''}${r.version ? `（版本 ${esc(r.version)}）` : ''}${r.inRepo === false ? ' · 云端没有这个提交' : ''}</span>`
+        : `${icon.alert(13)}<span>版本未知：${esc(r.detail ?? '未返回提交号')}</span>`;
     let sample = r.sample ?? '';
     try {
       sample = JSON.stringify(JSON.parse(sample), null, 2);
@@ -66,13 +66,13 @@ export function openSettings({ id, name, model }) {
     if (sample.length > 1200) sample = sample.slice(0, 1200) + ' …';
     return `<div class="etest ${ok ? 'ok' : r.state === 'up' ? 'warn' : 'bad'}">
       <div class="et1">${head}<span class="grow"></span><span class="muted">${r.http ? `HTTP ${r.http}` : ''}${r.latency != null ? ` · ${r.latency} ms` : ''}</span></div>
-      ${!ok && r.state === 'up' ? `<p class="muted">要读出线上跑的版本，服务的这个接口需要返回提交号，比如 <code>{"commit": "&lt;git sha&gt;"}</code>（commit、sha、gitSha、revision 这些字段名都认）。BranchMap 只读这个接口，不会改服务。</p>` : ''}
+      ${!ok && r.state === 'up' ? `<p class="muted">接口需返回提交号，如 <code>{"commit": "&lt;git sha&gt;"}</code>（也认 sha、gitSha、revision）</p>` : ''}
       ${sample ? `<pre class="etj">${esc(sample)}</pre>` : ''}
     </div>`;
   }
   async function runTest(i) {
     const url = envs[i]?.probe?.trim();
-    if (!url) return toast('先填探测地址');
+    if (!url) return toast('缺少探测地址');
     tests.set(i, 'running');
     drawEnvs();
     try {
@@ -133,7 +133,7 @@ export function openSettings({ id, name, model }) {
       sync();
       const prod = $('[data-prod]').value;
       const dev = $('[data-dev]').value;
-      if (dev && dev === prod) return toast('上线分支和集成分支不能是同一条');
+      if (dev && dev === prod) return toast('上线分支与集成分支相同');
       const list = envs.filter((x) => x.name.trim()).map((x) => ({ id: x.id, name: x.name.trim(), branch: x.branch, probe: x.probe?.trim() || null }));
       const btn = $('[data-save]');
       btn.disabled = true;

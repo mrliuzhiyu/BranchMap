@@ -88,10 +88,10 @@ function renderSide() {
   };
   const item = (p) => {
     const lv = !p.ready ? (p.sync?.status === 'error' ? 'critical' : 'busy') : worst(p.health);
-    const tip = !p.ready ? (p.sync?.status === 'error' ? '云端副本建不起来' : '正在建云端副本') : lv === 'critical' ? `${p.health.critical} 个严重问题` : lv === 'warning' ? `${p.health.warning} 个需要注意` : '';
+    const tip = !p.ready ? (p.sync?.status === 'error' ? '同步失败' : '正在同步') : lv === 'critical' ? `严重 ${p.health.critical}` : lv === 'warning' ? `注意 ${p.health.warning}` : '';
     const target = route.id ? href(p.id, route.view === 'people' || route.view === 'branches' ? route.view : 'graph') : href(p.id);
     return `<div class="pj${p.id === route.id ? ' on' : ''}" data-pj="${esc(p.id)}" data-group="${esc(p.group ?? '')}">
-      <a href="${target}"${mini ? ` data-tip="${esc(p.name + (tip ? '\n' + tip : ''))}"` : ''}><span class="ri">${icon.repo(13)}</span><span class="pini">${esc([...p.name][0]?.toUpperCase() ?? '?')}</span><span class="nm">${esc(p.name)}</span>${lv === 'critical' || lv === 'warning' || lv === 'busy' ? `<i class="sd ${lv}" data-tip="${esc(tip)}"></i>` : ''}${p.ready && p.inFlight ? `<span class="ct" data-tip="在途的工作">${p.inFlight}</span>` : ''}</a>
+      <a href="${target}"${mini ? ` data-tip="${esc(p.name + (tip ? '\n' + tip : ''))}"` : ''}><span class="ri">${icon.repo(13)}</span><span class="pini">${esc([...p.name][0]?.toUpperCase() ?? '?')}</span><span class="nm">${esc(p.name)}</span>${lv === 'critical' || lv === 'warning' || lv === 'busy' ? `<i class="sd ${lv}" data-tip="${esc(tip)}"></i>` : ''}${p.ready && p.inFlight ? `<span class="ct" data-tip="在途">${p.inFlight}</span>` : ''}</a>
       <button class="pm" data-pmenu="${esc(p.id)}" data-pop-anchor data-tip="更多">${icon.kebab(13)}</button>
     </div>`;
   };
@@ -113,7 +113,7 @@ function renderSide() {
       ${!projectList ? '<div class="quiet"><span class="spin" style="display:inline-grid">' + icon.sync(12) + '</span></div>' : ''}
     </div>
     <div class="sfoot">
-      <button class="meb" data-me data-tip="${esc([me?.name, me?.login ? '@' + me.login : '', me?.email, live ? (failed ? `${failed} 个项目云端同步失败` : '实时连接正常，数据变了会自动刷新') : '和本机服务的连接断了，正在重连'].filter(Boolean).join('\n'))}">
+      <button class="meb" data-me data-tip="${esc([me?.name, me?.login ? '@' + me.login : '', me?.email, live ? (failed ? `同步失败 ${failed}` : '已连接') : '正在重连'].filter(Boolean).join('\n'))}">
         <span class="mav">${avatar(me ?? { name: '?' }, 28)}<i class="led ${!live ? 'warning' : failed ? 'critical' : 'good'}"></i></span>
         <span class="mnm"><b>${esc(me?.name ?? '本机')}</b>${me?.login ? `<span>@${esc(me.login)}</span>` : ''}</span>
       </button>
@@ -140,7 +140,7 @@ sortable($('#side'), {
     try {
       await request('/api/projects/order', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ order: next }) });
     } catch (e) {
-      toast('排序没存上：' + e.message);
+      toast('排序失败：' + e.message);
       projectList = await listProjects().catch(() => projectList);
       renderSide();
     }
@@ -184,11 +184,11 @@ function renderTop() {
     const lv = hl.some((h) => h.level === 'critical') ? 'critical' : hl.length ? 'warning' : null;
     const s = o.sync ?? {};
     const led = s.status === 'syncing' || s.status === 'cloning' ? 'busy' : s.status === 'error' ? 'critical' : 'good';
-    const tip = s.status === 'error' ? `同步失败：${s.error ?? ''}\n点击重试` : `${s.lastOk ? '云端 ' + ago(Math.floor(s.lastOk / 1000)) + '同步（' + stamp(Math.floor(s.lastOk / 1000)) + '）' : '还没同步'}\n点击立即同步`;
+    const tip = s.status === 'error' ? `同步失败：${s.error ?? ''}` : s.lastOk ? `同步 · ${ago(Math.floor(s.lastOk / 1000))}` : '未同步';
     status = `${lv ? `<button class="tb hl ${lv}" data-health data-pop-anchor data-tip="${esc(hl.map((h) => h.title).join('\n'))}">${levelIcon(lv, 14)}<span>${hl.length}</span></button>` : ''}
       <button class="tb" data-sync data-tip="${esc(tip)}">${icon.cloud(15)}<i class="led ${led}"></i></button>
       ${o.web ? `<a class="tb" href="${esc(o.web)}" target="_blank" rel="noreferrer" data-tip="${esc(o.slug ?? o.web)}">${icon.ext(14)}</a>` : ''}
-      <button class="tb" data-settings data-tip="项目设置：主线分支、环境">${icon.gear(15)}</button>`;
+      <button class="tb" data-settings data-tip="项目设置">${icon.gear(15)}</button>`;
   }
   $('#top').innerHTML = `
     <nav class="crumbs">${crumbs.join(`<i>${icon.chevronRight(11)}</i>`)}</nav>
@@ -231,7 +231,7 @@ function addProject() {
       projectList = await listProjects().catch(() => projectList);
       renderSide();
       if (id) location.hash = href(id);
-      toast('已添加，正在建云端副本');
+      toast('已添加');
     },
   });
 }
@@ -284,9 +284,9 @@ document.addEventListener('click', async (e) => {
     const P = projectList?.projects.find((p) => p.id === id);
     picker(t, {
       items: [
-        { value: 'sync', label: '同步', html: `${icon.cloud(13)}<span>立即同步</span>` },
-        ...(P?.web ? [{ value: 'web', label: 'GitHub', html: `${icon.ext(13)}<span>在 GitHub 打开</span>` }] : []),
-        { value: 'remove', label: '移除', html: `${icon.close(13)}<span>移除项目</span><span class="faint" style="margin-left:auto;font-size:11px">不删任何东西</span>` },
+        { value: 'sync', label: '同步', html: `${icon.cloud(13)}<span>同步</span>` },
+        ...(P?.web ? [{ value: 'web', label: 'GitHub', html: `${icon.ext(13)}<span>GitHub</span>` }] : []),
+        { value: 'remove', label: '移除', html: `${icon.close(13)}<span>移除项目</span>` },
       ],
       placeholder: '',
       width: 240,
@@ -296,7 +296,7 @@ document.addEventListener('click', async (e) => {
           toast(r.ok ? '已同步' : '同步失败：' + r.error);
         } else if (v === 'web') window.open(P.web, '_blank', 'noreferrer');
         else if (v === 'remove') {
-          if (!confirm(`从 BranchMap 里移除「${P?.name ?? id}」？\n只是不再显示，你的仓库和云端副本都不会被删；之后可以在「添加项目」里加回来。`)) return;
+          if (!confirm(`移除项目「${P?.name ?? id}」\n不删除任何数据。`)) return;
           await request(`/api/p/${encodeURIComponent(id)}/remove`, { method: 'POST' }).catch((err) => toast(err.message));
           projectList = await listProjects().catch(() => projectList);
           if (route.id === id) location.hash = '#/';
@@ -371,7 +371,7 @@ async function route_() {
   el.innerHTML = '';
   if (!store.overview.ready) {
     const s = store.overview.sync ?? {};
-    el.innerHTML = `<div class="quiet pad">${s.status === 'error' ? `${icon.alert(14)} ${esc(s.error ?? '')}` : `<span class="spin" style="display:inline-grid">${icon.sync(16)}</span> 正在建云端副本`}</div>`;
+    el.innerHTML = `<div class="quiet pad">${s.status === 'error' ? `${icon.alert(14)} ${esc(s.error ?? '')}` : `<span class="spin" style="display:inline-grid">${icon.sync(16)}</span> 正在同步`}</div>`;
     mounted = { key, inst: { refresh: () => { if (store.overview?.ready) { mounted = null; route_(); } } } };
     return;
   }
@@ -428,7 +428,7 @@ function connBanner(ok) {
   clearTimeout(connTimer);
   let el = document.getElementById('conn');
   if (ok) {
-    if (el && !el.hidden) toast('已重新连上');
+    if (el && !el.hidden) toast('已连接');
     if (el) el.hidden = true;
     return;
   }
@@ -436,7 +436,7 @@ function connBanner(ok) {
     if (!el) {
       el = document.createElement('div');
       el.id = 'conn';
-      el.innerHTML = `<span class="spin" style="display:inline-grid">${icon.sync(13)}</span><span>和本机服务的连接断了，正在重连…</span>`;
+      el.innerHTML = `<span class="spin" style="display:inline-grid">${icon.sync(13)}</span><span>正在重连</span>`;
       document.body.append(el);
     }
     el.hidden = false;

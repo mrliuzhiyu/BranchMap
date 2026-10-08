@@ -234,8 +234,8 @@ export function mountDiff(el, { file, load, images = null, nav = null, extraActi
       <span class="grow"></span>
       ${extraActions}
       <div class="seg" data-g="mode"><button data-mode="unified">统一</button><button data-mode="split">并排</button></div>
-      <label class="check" title="忽略空白字符的改动"><input type="checkbox" data-ws ${ws ? 'checked' : ''}>忽略空白</label>
-      <label class="check" title="显示整个文件，而不只是改动附近几行"><input type="checkbox" data-full>全文</label>
+      <label class="check" title="忽略空白"><input type="checkbox" data-ws ${ws ? 'checked' : ''}>忽略空白</label>
+      <label class="check" title="整个文件"><input type="checkbox" data-full>全文</label>
       ${nav ? `<button class="icon-btn" data-prev title="上一个文件 (K)">${icon.chevronDown(14).replace('<svg', '<svg style="transform:rotate(180deg)"')}</button><button class="icon-btn" data-next title="下一个文件 (J)">${icon.chevronDown(14)}</button>` : ''}
     </div>
     <div class="diff-b"><div class="loading">加载中…</div></div>
@@ -254,10 +254,10 @@ export function mountDiff(el, { file, load, images = null, nav = null, extraActi
         : `<div class="img-one"><figure style="margin:0;display:grid;gap:8px;justify-items:center"><img src="${esc(images.after || images.before)}" alt=""><figcaption class="muted">${images.after ? '新增' : '已删除'}</figcaption></figure></div>`;
       return;
     }
-    if (data.tooLarge) { body.innerHTML = `<div class="empty">差异太大（${Math.round(data.size / 1024)} KB），不在这里显示</div>`; return; }
-    if (data.binary) { body.innerHTML = '<div class="empty">二进制文件，没有文本差异</div>'; return; }
-    if (data.dir) { body.innerHTML = '<div class="empty">这是一个目录</div>'; return; }
-    if (!data.hunks.length) { body.innerHTML = `<div class="empty">${ws ? '忽略空白后没有差异' : file.st === 'R' ? '只改了文件名，内容没变' : '没有文本差异（可能只改了权限）'}</div>`; return; }
+    if (data.tooLarge) { body.innerHTML = `<div class="empty">差异过大（${Math.round(data.size / 1024)} KB）</div>`; return; }
+    if (data.binary) { body.innerHTML = '<div class="empty">二进制文件</div>'; return; }
+    if (data.dir) { body.innerHTML = '<div class="empty">目录</div>'; return; }
+    if (!data.hunks.length) { body.innerHTML = `<div class="empty">${ws ? '仅空白改动' : file.st === 'R' ? '仅重命名' : '无文本差异'}</div>`; return; }
     const { html, cut } = (mode === 'split' ? splitHtml : unifiedHtml)(data.hunks, limit);
     const total = data.hunks.reduce((s, h) => s + h.lines.length, 0);
     body.innerHTML = `<div class="code diff-${mode === 'split' ? 's' : 'u'}">${html}</div>${cut ? `<div class="empty"><button class="btn" data-more>显示全部 ${total} 行</button></div>` : ''}`;

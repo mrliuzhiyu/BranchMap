@@ -27,7 +27,7 @@ export function track(stages, counts, total, { lg = false } = {}) {
 function trackTip(stages, counts, total) {
   return stages.map((s, i) => {
     const n = counts[i];
-    const v = n == null ? '读不出版本' : n >= total ? '✓ 全部已到' : n > 0 ? `${n} / ${total} 个已到` : '还没到';
+    const v = n == null ? '版本未知' : n >= total ? '✓ 已到' : n > 0 ? `已到 ${n} / ${total}` : '未到';
     return `<div class="tr"><span style="min-width:64px">${esc(s.name)}</span><span class="tl">${esc(v)}</span></div>`;
   }).join('');
 }
