@@ -1,8 +1,5 @@
 // 仓库模型：在内存里走提交图，算出分支关系。不再调用任何 git 命令。
 // 行号 = 提交在列表里的位置（按提交时间倒序，子提交一定在父提交之前）。
-import { nowSec, DAY, weekStart } from './util.js';
-
-export const STALE_DAYS = 14;
 const SLOTS = ['var(--s1)', 'var(--s2)', 'var(--s3)', 'var(--s4)', 'var(--s5)', 'var(--s6)', 'var(--s7)', 'var(--s8)'];
 
 function popcount(x) {
@@ -153,12 +150,6 @@ export class Model {
     this.trunkCache.set(tip, info);
     return info;
   }
-  /** 提交 c 什么时候进的这条主线（主线上那次提交的时间）；没进返回 null。 */
-  enteredAt(c, T) {
-    if (!T || T.intro[c] < 0) return null;
-    const m = T.chain[T.intro[c]];
-    return { commit: m, time: this.ct[m], direct: T.pos[c] >= 0 };
-  }
 
   get prodTip() { return this.prodB?.tip ?? -1; }
   get devTip() { return this.devB?.tip ?? -1; }
@@ -166,77 +157,6 @@ export class Model {
   get devT() { return this.trunkInfo(this.devTip); }
   /** 各分支「自己的工作」以哪条线为准：有 dev 用 dev，否则 main。 */
   get baseB() { return this.devB ?? this.prodB; }
-
-  rel(tip, T) {
-    if (!T || tip < 0) return null;
-    const A = this.anc(tip);
-    return { ahead: this.countDiff(A, T.set), behind: this.countDiff(T.set, A) };
-  }
-
-  /* ---------- 每条分支的状态 ---------- */
-  analyze() {
-    if (this._analysis) return this._analysis;
-    const now = nowSec();
-    const prodT = this.prodT;
-    const devT = this.devT;
-    const rows = [];
-    for (const B of this.branches.values()) {
-      if (B.tip < 0) continue;
-      const trunk = B === this.prodB || B === this.devB;
-      const tip = B.tip;
-      const rp = this.rel(tip, prodT);
-      const rd = this.rel(tip, devT);
-      let status;
-      let own = [];
-      let mergedProd = null;
-      let mergedDev = null;
-      if (trunk) status = 'trunk';
-      else if (!prodT && !devT) {
-        status = now - this.ct[tip] <= STALE_DAYS * DAY ? 'active' : 'stale';
-      } else if (rp && rp.ahead === 0) {
-        mergedProd = this.enteredAt(tip, prodT);
-        mergedDev = devT ? this.enteredAt(tip, devT) : null;
-        own = mergedProd.direct ? [] : this.introduced(tip, prodT);
-        status = own.length ? 'released' : 'none';
-      } else if (rd && rd.ahead === 0) {
-        mergedDev = this.enteredAt(tip, devT);
-        own = mergedDev.direct ? [] : this.introduced(tip, devT);
-        status = own.length ? 'pending' : 'none';
-      } else {
-        const baseT = devT ?? prodT;
-        own = this.listDiff(this.anc(tip), baseT.set);
-        status = now - this.ct[tip] <= STALE_DAYS * DAY ? 'active' : 'stale';
-      }
-      const owner = this.ownerOf(own, tip);
-      rows.push({ B, name: B.name, tip, status, own, owner, rp, rd, mergedProd, mergedDev, time: this.ct[tip] });
-    }
-    const order = { trunk: 0, active: 1, pending: 2, stale: 3, released: 4, none: 5 };
-    rows.sort((x, y) => order[x.status] - order[y.status] || (x.status === 'released' ? (y.mergedProd?.time ?? 0) - (x.mergedProd?.time ?? 0) : y.time - x.time));
-    if (this.prodB) rows.sort((x, y) => (y.B === this.prodB) - (x.B === this.prodB));
-    this._analysis = { rows, byName: new Map(rows.map((r) => [r.name, r])) };
-    return this._analysis;
-  }
-  /** 已经合进主线的分支：那次合并带进来、且从分支头能走到的提交。 */
-  introduced(tip, T) {
-    const m = T.intro[tip];
-    const out = [];
-    const seen = new Set();
-    const st = [tip];
-    while (st.length) {
-      const c = st.pop();
-      if (seen.has(c) || T.intro[c] !== m || T.pos[c] >= 0) continue;
-      seen.add(c);
-      out.push(c);
-      for (const q of this.P[c]) st.push(q);
-    }
-    return out.sort((x, y) => x - y);
-  }
-  ownerOf(list, tip) {
-    const tally = new Map();
-    for (const c of list) if (this.P[c].length < 2) tally.set(this.a[c], (tally.get(this.a[c]) ?? 0) + 1);
-    if (!tally.size) return this.a[tip];
-    return [...tally].sort((x, y) => y[1] - x[1])[0][0];
-  }
 
   /* ---------- main ↔ dev ---------- */
   trunkRelation() {
@@ -349,29 +269,6 @@ export class Model {
     let firstTag = null;
     for (const t of this.tags) if (has(this.anc(t.c), c) && (!firstTag || t.date < firstTag.date)) firstTag = t;
     return { branches, firstTag };
-  }
-
-  /* ---------- 人 ---------- */
-  peopleStats() {
-    if (this._people) return this._people;
-    const now = nowSec();
-    const thisWeek = weekStart(now);
-    const WEEKS = 26;
-    const stats = this.people.map((p) => ({ p, commits: [], last: 0, d7: 0, d30: 0, weeks: new Array(WEEKS).fill(0), branches: [] }));
-    for (let c = 0; c < this.N; c++) {
-      const s = stats[this.a[c]];
-      if (!s) continue;
-      s.commits.push(c);
-      const t = this.t[c];
-      if (t > s.last) s.last = t;
-      if (now - t <= 7 * DAY) s.d7++;
-      if (now - t <= 30 * DAY) s.d30++;
-      const w = Math.round((thisWeek - weekStart(t)) / (7 * DAY));
-      if (w >= 0 && w < WEEKS) s.weeks[WEEKS - 1 - w]++;
-    }
-    for (const r of this.analyze().rows) if (r.status !== 'trunk' && stats[r.owner]) stats[r.owner].branches.push(r);
-    this._people = stats;
-    return stats;
   }
 
   /* ---------- 杂项 ---------- */

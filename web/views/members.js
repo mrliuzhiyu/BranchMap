@@ -170,7 +170,7 @@ export function mount(el, ctx) {
     const presence = (b) => (T.dev && T.main
       ? `<span class="pres"><i class="${inMain(b) ? 'on' : ''}" style="--c:${branchColor(T.main, T)}" data-tip="${esc(inMain(b) ? `已进 ${T.main}` : `还没进 ${T.main}`)}"></i><i class="${inDev(b) ? 'on' : ''}" style="--c:${branchColor(T.dev, T)}" data-tip="${esc(inDev(b) ? `已进 ${T.dev}` : `还没进 ${T.dev}`)}"></i></span>`
       : '');
-    const statusIcon = (b) => (b.status === 'stale' ? `<span data-tip="超过 30 天没动">${icon.clock(12)}</span>` : b.status === 'merged' || b.status === 'released' ? '' : `<span class="muted" data-tip="自己的提交（还没进 ${esc(T.dev ?? '主线')}）">+${b.own}</span>`);
+    const statusIcon = (b) => (b.status === 'stale' ? `<span data-tip="超过 ${o.staleDays} 天没动">${icon.clock(12)}</span>` : b.status === 'merged' || b.status === 'released' ? '' : `<span class="muted" data-tip="自己的提交（还没进 ${esc(T.dev ?? '主线')}）">+${b.own}</span>`);
     const behindMark = (b) => (b.behind && !inDev(b) ? `<span class="bh" data-tip="${esc(`落后 ${T.dev ?? '主线'} ${b.behind} 个提交`)}">${icon.arrowDown(11)}${b.behind}</span>` : '');
     const branchRow = (b) => `<a class="mb" href="${ctx.href('graph', { b: b.name })}" style="--c:${branchColor(b.name, T)}"><i></i><span class="s">${esc(b.name)}</span>${b.pr ? `<span class="pr ${b.pr.state}" data-tip="${esc(`PR #${b.pr.n} ${b.pr.title ?? ''}`)}">#${b.pr.n}</span>${prChip(b.pr, { mini: true })}` : ''}${statusIcon(b)}${behindMark(b)}${presence(b)}<span class="t" data-tip="${fullStamp(b.time)}">${when(b.time)}</span></a>`;
 

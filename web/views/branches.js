@@ -10,7 +10,7 @@ const FILTERS = [
   { id: 'active', label: '进行中', tip: '有自己的提交、还没合进集成分支，最近动过' },
   { id: 'pending', label: '已进 dev', tip: '分支已经合进集成分支（dev），还没进上线分支（main）' },
   { id: 'released', label: '已进 main', tip: '分支已经进了上线分支（main）' },
-  { id: 'stale', label: '停滞', tip: '超过 30 天没动、也没合进主线' },
+  { id: 'stale', label: '停滞', tip: (o) => `超过 ${o.staleDays} 天没动、也没合进主线` },
   { id: 'clean', label: '可清理', tip: '已经合进主线、却还留在云端的分支，和停滞的分支：可以删掉的' },
   { id: 'local', label: '本机', tip: '这台电脑上有的分支（含没推送的）' },
   { id: 'mine', label: '我的', tip: '我负责的分支' },
@@ -141,7 +141,7 @@ export function mount(el, ctx) {
     const devName = store.model.trunk.dev ?? store.model.trunk.prod;
     root.innerHTML = `
       <div class="btools">
-        <div class="fchips">${FILTERS.map((x) => `<button class="chip${f === x.id ? ' on' : ''}${!n[x.id] && x.id !== 'all' ? ' zero' : ''}" data-f="${x.id}" ${x.tip ? `data-tip="${esc(x.tip)}"` : ''}>${x.label}<span class="n">${n[x.id]}</span></button>`).join('')}</div>
+        <div class="fchips">${FILTERS.map((x) => `<button class="chip${f === x.id ? ' on' : ''}${!n[x.id] && x.id !== 'all' ? ' zero' : ''}" data-f="${x.id}" ${x.tip ? `data-tip="${esc(typeof x.tip === 'function' ? x.tip(o) : x.tip)}"` : ''}>${x.label}<span class="n">${n[x.id]}</span></button>`).join('')}</div>
         <span class="grow"></span>
         <div class="seg" data-tip="排序"><button data-s="time" aria-pressed="${sort === 'time'}">${icon.clock(12)}</button><button data-s="commits" aria-pressed="${sort === 'commits'}">${icon.commit(12)}</button></div>
         <label class="field sm">${icon.search(12)}<input data-q value="${esc(q)}" placeholder="分支、成员、工单、标签"></label>
@@ -155,7 +155,7 @@ export function mount(el, ctx) {
             ...(r.tickets ?? []).slice(0, 2).map((t) => `<span class="ttag">${esc(t)}</span>`),
             ...r.tags.map((t) => `<span class="utag" data-tag="${esc(t)}" data-tip="自定义标签，点 × 删除">${esc(t)}<i data-untag="${esc(t)}">×</i></span>`),
             r.pr ? prChip(r.pr) : '',
-            r.status === 'stale' ? `<span class="stag" data-tip="超过 30 天没动">${icon.clock(10)}</span>` : '',
+            r.status === 'stale' ? `<span class="stag" data-tip="超过 ${o.staleDays} 天没动">${icon.clock(10)}</span>` : '',
           ].join('');
           return `<div class="bl-r" data-open="${esc(r.name)}" style="--c:${r.color}">
             <span class="bn2">${f === 'clean' ? `<input type="checkbox" data-pick="${esc(r.name)}" ${picks?.has(r.name) ? 'checked' : ''}>` : ''}<i class="dot"></i><span class="nm" data-tip-c="${r.color}" data-tip="${esc(`${r.name}\n${ctx.overview.persons[r.owner]?.name ?? ''}${r.tip?.subject ? `\n最新：${r.tip.subject}` : ''}\n点击在分支图里打开`)}">${esc(r.name)}</span>${tags}<button class="addtag" data-addtag="${esc(r.name)}" data-tip="加标签">${icon.tag(11)}</button></span>

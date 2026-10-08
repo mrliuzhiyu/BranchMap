@@ -341,7 +341,7 @@ export function mount(el, ctx) {
             ${bs.sort((x, y) => y.time - x.time).map(branchRow).join('')}
           </div>`;
         }).join('') || `<div class="quiet">${icon.check(12)} 没有进行中的分支</div>`}
-        ${C.stale.length ? `<button class="more" data-stale-toggle data-tip="超过 30 天没动、也没合进主线">${staleOpen ? icon.chevronDown(11) : icon.chevronRight(11)}${icon.clock(11)}<span>${C.stale.length}</span></button>${staleOpen ? C.stale.map(branchRow).join('') : ''}` : ''}
+        ${C.stale.length ? `<button class="more" data-stale-toggle data-tip="超过 ${O.staleDays} 天没动、也没合进主线">${staleOpen ? icon.chevronDown(11) : icon.chevronRight(11)}${icon.clock(11)}<span>${C.stale.length}</span></button>${staleOpen ? C.stale.map(branchRow).join('') : ''}` : ''}
       </div>`;
   }
 
@@ -431,7 +431,7 @@ export function mount(el, ctx) {
       groups.get(g).push(b);
     }
     const ordered = [...groups].sort((x, y) => Math.max(...y[1].map((b) => b.time)) - Math.max(...x[1].map((b) => b.time)));
-    if (C.stale.length) ordered.push(['停滞（30 天没动）', [...C.stale]]);
+    if (C.stale.length) ordered.push([`停滞（${O.staleDays} 天没动）`, [...C.stale]]);
     const all = ordered.flatMap(([, bs]) => bs.map((b) => b.name));
     const items = ordered.flatMap(([g, bs]) => bs.sort((x, y) => y.time - x.time).map((b) => ({
       value: b.name,

@@ -11,11 +11,10 @@
 
 ## 待核实
 
-- [ ] **「停滞」有两个阈值**：服务端用 `config.json` 的 `health.staleDays`（默认 30，`lib/config.mjs`），
-  前端 `web/lib/model.js` 写死 `STALE_DAYS = 14`。先查清 `model.js` 那份 `status` 在哪些地方显示，
-  再决定是否改成读服务端的配置。（2026-10-07 落文档治理时发现）
-- [ ] **悬停提示写死「30 天」**：`web/views/branches.js`（筛选「停滞」与分支标记）、`web/views/members.js`
-  写的是「超过 30 天没动」，而 `staleDays` 可配置；改了配置后提示就不对。（同上）
+- [ ] **`web/lib/model.js` 还有一批没人调用的老方法**：`trunkRelation`、`syncState`、`groupByChain`、`authorsOf`、
+  `groupLabel`、`bodyTitle`、`prOf`、`containedIn`、`resolve`、`baseB`（页面外没有任何调用，只互相调用）。
+  分支状态、主线差异早已改由服务端 `lib/engine/pipeline.mjs` 算。删之前再 grep 一遍确认没有新调用方。
+  （2026-10-07 删「停滞 14 天」那条死路径时发现）
 
 ## 部署
 
