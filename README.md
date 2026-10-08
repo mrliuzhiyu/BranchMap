@@ -139,7 +139,14 @@ lib/engine/             纯计算，不碰磁盘和网络
   health.mjs              健康规则（每条一个函数，往 RULES 里加）
 lib/project.mjs         把三个数据源接到引擎上，调度后台任务，数据变了就通知页面
 lib/repo.mjs            云端副本上的 Git 查询（提交图、提交、差异、对比、PR）
+lib/git.mjs             运行 git：只读、限并发，联网命令单独排队且不弹登录窗口
+lib/people.mjs          把「名字 + 邮箱」归成人，头像来自 GitHub
+lib/remote.mjs          远程地址的各种写法统一成一个键（用来对上项目）
+lib/auth.mjs            部署到服务器时的飞书门禁（本机不开），见 docs/DEPLOY.md
 web/                    页面（原生 JS 模块，不需要构建）
+scripts/check-docs.mjs  文档治理闸（npm run check:docs）
 ```
+
+工程约定（Git、issue、文档治理）见 [AGENTS.md](AGENTS.md)，文档索引见 [docs/README.md](docs/README.md)。
 
 加一种数据源（比如 CI 状态、工单系统），就在 `lib/sources/` 加一个模块，在 `project.mjs` 里接上。加一条健康规则，就往 `health.mjs` 的 `RULES` 里加一个函数。
