@@ -18,7 +18,7 @@ verified: 2026-10-07
 | 文档 | status | type | verified | 内容 |
 |---|---|---|---|---|
 | [DOC_GOVERNANCE.md](DOC_GOVERNANCE.md) | authoritative | spec | 2026-10-07 | 文档治理：放什么、状态头、归档、issue 流程、个人记忆与仓库文件的分工、文档闸 |
-| [DEPLOY.md](DEPLOY.md) | active | guide | 2026-10-07 | 本机与服务器两种跑法、上服务器的步骤（反向代理、飞书应用、机密、Git 凭据）与已部署环境登记表 |
+| [DEPLOY.md](DEPLOY.md) | active | guide | 2026-10-07 | 本机与服务器两种跑法、上服务器的步骤（反向代理、飞书应用、机密、连接 GitHub App、Git 凭据）、`deploy/` 模板与已部署环境登记表 |
 
 ## 归档
 

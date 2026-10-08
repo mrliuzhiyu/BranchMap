@@ -56,6 +56,13 @@ const routes = [
   }],
   // 项目化：候选仓库、添加、移除
   ['GET', /^\/api\/discovered$/, () => ws.discovered()],
+  // 连接 GitHub 的状态：App、装到了哪些组织、能读哪些仓库（不含任何密钥）
+  ['GET', /^\/api\/github$/, async (p, q, m, res, req) => {
+    const s = await ws.github.status();
+    if (s.repos) for (const r of s.repos) r.added = ws.byKey.has('github.com/' + r.slug.toLowerCase());
+    // 只有管理员能连接 / 改授权、添加项目
+    return { ...s, admin: !auth || auth.isAdmin(auth.user(req)) };
+  }],
   ['POST', /^\/api\/projects$/, async (p, q, m, res, req) => {
     const body = await readBody(req);
     const remote = String(body?.remote ?? '').trim();
@@ -154,6 +161,112 @@ async function me() {
   const value = { name: name || gh?.name || gh?.login || null, email: email || null, login: gh?.login ?? null, avatar: gh?.avatar ? gh.avatar + (gh.avatar.includes('?') ? '&' : '?') + 's=64' : null };
   meCache = { at: Date.now(), value };
   return value;
+}
+
+/* ---------- 连接 GitHub（GitHub App）：创建 → 安装 → 回来选仓库 ---------- */
+// 对外的地址：开了门禁就是门禁里配的域名；本机就是 localhost（本机收不到 Webhook，创建时不开）
+const publicOrigin = () => (auth ? auth.origin : `http://localhost:${PORT}`);
+
+function htmlPage(res, status, title, text, link = '/', linkText = '回到 BranchMap') {
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+  res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BranchMap</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;font:14px/1.6 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#f7f7f7;color:#111}main{max-width:420px;padding:24px;text-align:center}h1{font-size:18px;margin:0 0 8px}p{color:#666;margin:0 0 20px;white-space:pre-line}a{display:inline-block;padding:9px 18px;border-radius:9px;background:#111;color:#fff;text-decoration:none}@media(prefers-color-scheme:dark){body{background:#111;color:#eee}p{color:#999}a{background:#eee;color:#111}}</style>
+<main><h1>${esc(title)}</h1><p>${esc(text)}</p><a href="${esc(link)}">${esc(linkText)}</a></main>`);
+}
+
+async function githubConnect(req, res, url) {
+  if (req.method !== 'GET') return send(res, 405, { error: '只读' });
+  const gh = ws.github;
+  // 创建 / 换 App 只有管理员能做（本机不开门禁：只有本机能访问，就是你自己）
+  const admin = !auth || auth.isAdmin(auth.user(req));
+  try {
+    if (url.pathname === '/github/connect') {
+      if (!admin) return htmlPage(res, 403, '只有管理员能连接 GitHub', '请管理员来操作');
+      if (gh.connected) {
+        res.writeHead(302, { location: gh.installUrl(), 'cache-control': 'no-store' });
+        return res.end();
+      }
+      const org = String(url.searchParams.get('org') ?? '').trim();
+      if (org && !/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/.test(org)) return htmlPage(res, 400, '组织名不对', org);
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      return res.end(gh.createPage(publicOrigin(), org || null, { webhooks: !!auth }));
+    }
+    if (url.pathname === '/github/created') {
+      if (!admin) return htmlPage(res, 403, '只有管理员能连接 GitHub', '请管理员来操作');
+      const app = await gh.finishCreate(url.searchParams.get('code'), url.searchParams.get('state'));
+      // 应用建好了：接着去选组织、勾仓库
+      res.writeHead(302, { location: `${app.url}/installations/new`, 'cache-control': 'no-store' });
+      return res.end();
+    }
+    if (url.pathname === '/github/installed') {
+      await gh.loadRepos(true).catch(() => {});
+      ws.emit('change', { id: null, what: 'github' });
+      // 回到页面并打开「添加项目」，直接从授权的仓库里选
+      res.writeHead(302, { location: '/?github=installed', 'cache-control': 'no-store' });
+      return res.end();
+    }
+    return htmlPage(res, 404, '没有这个页面', '');
+  } catch (e) {
+    console.warn(`  连接 GitHub 出错：${firstLine(e)}`);
+    return htmlPage(res, e.status && e.status < 500 ? e.status : 502, '连接 GitHub 没成功', firstLine(e), '/github/connect', '再试一次');
+  }
+}
+
+// Webhook：有人推送 → 马上同步这个仓库；PR / 审核 / CI 有变化 → 刷新 PR（几秒内的一串事件合成一次）
+const PR_EVENTS = new Set(['pull_request', 'pull_request_review', 'check_suite', 'check_run', 'status']);
+const prTimers = new Map();
+async function githubWebhook(req, res) {
+  let raw;
+  try {
+    raw = await readRaw(req, 10 * 1024 * 1024);
+  } catch (e) {
+    return send(res, e.status ?? 400, { error: firstLine(e) });
+  }
+  if (!ws.github.verify(raw, req.headers['x-hub-signature-256'])) return send(res, 401, { error: '签名不对' });
+  let body;
+  try {
+    body = JSON.parse(raw.toString('utf8'));
+  } catch {
+    return send(res, 400, { error: '不是 JSON' });
+  }
+  send(res, 202, { ok: true });
+  const event = String(req.headers['x-github-event'] ?? '');
+  if (event === 'installation' || event === 'installation_repositories') {
+    ws.github.loadRepos(true).then(() => ws.emit('change', { id: null, what: 'github' })).catch(() => {});
+    return;
+  }
+  const slug = body.repository?.full_name;
+  const p = slug ? ws.byKey.get('github.com/' + slug.toLowerCase()) : null;
+  if (!p) return;
+  if (event === 'push') {
+    // 正在同步的那一次可能早于这次推送：等它完了再同步一次
+    const again = () => p.sync().catch(() => {});
+    if (p.mirror.running) p.mirror.running.then(again, again);
+    else again();
+  } else if (PR_EVENTS.has(event)) {
+    clearTimeout(prTimers.get(p.id));
+    prTimers.set(p.id, setTimeout(() => {
+      prTimers.delete(p.id);
+      p.repo.prs(true).then(() => ws.notify(p, 'prs')).catch(() => {});
+    }, 3000));
+  }
+}
+
+function readRaw(req, limit) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on('data', (c) => {
+      size += c.length;
+      if (size > limit) {
+        reject(Object.assign(new Error('请求太大'), { status: 413 }));
+        req.destroy();
+      } else chunks.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
 }
 
 function readBody(req) {
@@ -267,11 +380,14 @@ const server = http.createServer(async (req, res) => {
   if (origin && !allowedHosts.has(origin.replace(/^https?:\/\//, ''))) return send(res, 403, { error: 'origin 不对' });
 
   const url = new URL(req.url, `http://${req.headers.host}`);
+  // GitHub 的 Webhook：靠签名认人，不走飞书门禁
+  if (url.pathname === '/api/github/webhook' && req.method === 'POST') return githubWebhook(req, res);
   if (auth) {
     if (await auth.gate(req, res, url)) return;
     if (req.method !== 'GET' && url.pathname.startsWith('/api/') && !OPEN_POST.test(url.pathname) && !auth.isAdmin(auth.user(req))) return send(res, 403, { error: '只有管理员能改配置' });
   }
   if (url.pathname === '/api/events') return events(req, res);
+  if (url.pathname.startsWith('/github/')) return githubConnect(req, res, url);
   if (!url.pathname.startsWith('/api/')) {
     if (req.method !== 'GET') return send(res, 405, { error: '只读' });
     return serveStatic(url.pathname, res);

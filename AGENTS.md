@@ -26,7 +26,7 @@ BranchMap —— 只读的 Git 进度可视化本地网页：每个人做到哪�
 - **明确不做**：推送通知（飞书等）；「团队版」共享服务器收集各人本机状态。用户不提就别再提议。
 
 完成情况（2026-10-07 按代码核对）：用户接受过的四项都已实现——上线记录（环境详情）、
-环境对比（`pipeline.mjs` 的 `envCompare`）、PR 审查与 CI 状态（`repo.mjs` 经 `gh`）、
+环境对比（`pipeline.mjs` 的 `envCompare`）、PR 审查与 CI 状态（`repo.mjs`，令牌来自 GitHub App，没连时用本机 `gh` 的登录）、
 分支清理建议（分支页，只给命令）。
 
 ## 技术栈与运行
@@ -81,4 +81,7 @@ npm run dev        # node --watch，改服务端代码自动重启
 
 - 飞书门禁的 App Secret 与会话密钥只从环境变量读（`BRANCHMAP_FEISHU_APP_SECRET`、`BRANCHMAP_SESSION_SECRET`），
   **绝不写进本仓任何文件**，包括 `config.example.json`、文档、issue 和提交信息。
-- 访问私有仓库用本机已有的 Git 凭据（凭据管理器、SSH key），BranchMap 不保存凭据，没有凭据时直接报错、不弹登录窗口。
+- 访问私有仓库：连了 GitHub App（「添加项目」里的「连接 GitHub」，用户 2026-10-07 定）就用 App 的安装令牌（只读、1 小时过期、只限勾选的仓库）；
+  没连时用本机已有的 Git 凭据（凭据管理器、SSH key）和 `gh` 的登录。没有凭据时直接报错、不弹登录窗口。
+- GitHub App 的凭据（App ID、私钥、Webhook 密钥）由服务端在创建时自动换得，只存在缓存目录的 `github-app.json`（权限 600，被 git 忽略），
+  **不进 `config.json`、不进本仓任何文件**，接口和页面也不返回。删掉这个文件就是断开连接。

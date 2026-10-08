@@ -21,6 +21,7 @@
 
 | Issue | 一句话 | 状态 | 日期 |
 |---|---|---|---|
+| [连接 GitHub：GitHub App 授权读仓库](open/20261007-github-app-connect.md) | 网页上点「连接 GitHub」创建并安装 App，勾选授权的仓库；PR / CI / 头像走 App，Webhook 实时同步，不再依赖 gh | 🔧 实现中 | 2026-10-07 |
 
 ## 已归档
 

@@ -2,7 +2,7 @@
 status: active
 type: guide
 verified: 2026-10-07
-note: 服务器部署的代码已就绪（飞书门禁），仓库里还没有部署脚本，也没有登记过任何一台服务器
+note: 服务器部署：飞书门禁 + GitHub App 连接；进程守护与 nginx 模板在 deploy/；已部署的机器见第三节
 ---
 
 # 运行与部署
@@ -14,14 +14,14 @@ BranchMap 有两种跑法，代码是同一份，区别只在 `config.json` 里�
 | 谁能看 | 只有本机（监听 `127.0.0.1`） | 公司飞书账号登录后可看 |
 | `config.json` | 不写 `auth` | 写 `auth`，见下 |
 | 改配置（加项目、改环境） | 谁都能改 | 只有 `auth.admins` 里的人能改 |
-| 读私有仓库 | 本机的 Git 凭据 | 服务器上的 Git 凭据（只读的 deploy key 或令牌） |
+| 读私有仓库 | 本机的 Git 凭据；PR / CI / 头像用本机 `gh` 的登录，或连接 GitHub App | 连接 GitHub App（推荐，网页上点「连接 GitHub」）；拉代码也可以用服务器上的 Git 凭据 |
 
 ## 一、现状（2026-10-07 按代码与本机配置核对）
 
-- 飞书门禁代码已在 `main`（`3c79d2f`，`lib/auth.mjs`）。
+- 飞书门禁：`lib/auth.mjs`；连接 GitHub（GitHub App）：`lib/github.mjs`。
 - 本机 `config.json` 没有 `auth` 段，即本机不开门禁。
-- 仓库里**没有**部署脚本、进程守护（systemd / pm2）配置、nginx 模板。
-- **没有登记过任何一台跑着 BranchMap 的服务器**。部署之后在下面「三、已部署的环境」登记，没登记的不算现状。
+- 进程守护与 nginx 模板：`deploy/branchmap.service`、`deploy/nginx.conf.example`（照 129 上实际在用的整理）。还没有一键部署脚本。
+- 部署之后在下面「三、已部署的环境」登记，没登记的不算现状。
 
 ## 二、部署到服务器要做的事
 
@@ -43,8 +43,15 @@ BranchMap 有两种跑法，代码是同一份，区别只在 `config.json` 里�
 4. **两个环境变量**（只放在服务器上，不进仓库、不进 `config.json`）：
    `BRANCHMAP_FEISHU_APP_SECRET`（飞书 App Secret）、`BRANCHMAP_SESSION_SECRET`（至少 32 个字符）。
    缺任何一项服务直接拒绝启动，不会带病跑。
-5. **Git 凭据**：服务器上给 Git 配好能读这些仓库的只读凭据。没有凭据时同步报错，不会弹窗。
-6. **起服务**：`npm ci && npm run serve`，用进程守护保持常驻。
+5. **连接 GitHub**（推荐）：服务起来后，管理员用飞书登录，在「添加项目」里填上组织名、点「连接 GitHub」：
+   - GitHub 打开「创建应用」页，权限（全部只读）、回调、Webhook 都已填好，点创建；
+   - 接着在安装页选组织、勾选要看的仓库；回到 BranchMap，「添加项目」里就列出这些仓库，勾选添加。
+   - App 的凭据由服务端自动换得，存在缓存目录的 `github-app.json`（600），不用手动复制。以后增减仓库点「管理授权」。
+   - 私有 App 只能装到建它的账号上，所以要建在组织名下：需要组织 owner（或被授予 App 管理权限的人）来点。
+   - 机器访问不了 `github.com` 的 HTTPS 时，拉代码可以给服务用户配 SSH key 并设 `url."git@github.com:".insteadOf "https://github.com/"`，
+     PR / CI / 头像照样走 App（只访问 `api.github.com`）。
+6. **Git 凭据**（不连 App 时）：服务器上给 Git 配好能读这些仓库的只读凭据，PR / CI 另需 `gh auth login`。没有凭据时同步报错，不会弹窗。
+7. **起服务**：`npm ci --omit=dev`，用 `deploy/branchmap.service` 常驻；nginx 用 `deploy/nginx.conf.example`（含 Webhook 的 10 MB 请求体上限）。
 
 规矩（照 Siltok 的部署约定）：
 

@@ -40,12 +40,16 @@
 
 - 第一次建云端副本时，如果本机已经有这个仓库，会先从本机拷一份记录（很快，也不联网），再联网补齐。
 - 同步用你电脑上现有的 Git 登录（凭据管理器、SSH key），私有仓库也能读。没有凭据时直接报错，不会弹登录窗口。
+- 连了 GitHub（「添加项目」里点「连接 GitHub」）之后，读 GitHub 仓库改用 GitHub App 的只读授权：PR、CI、头像走它，有人推送时 GitHub 主动通知，不用等下一次同步。
 - 本机仓库只读：比较「推没推送」用的是云端副本，不会在你的仓库里执行 fetch。
 - 服务只监听 `127.0.0.1`。
 
 ## 用法
 
-需要 Node 20+ 和 Git。想看 PR 和 GitHub 头像，再装一个登录过的 [GitHub CLI](https://cli.github.com/)（`gh auth login`）。
+需要 Node 20+ 和 Git。想看 PR、CI 和 GitHub 头像，二选一：
+
+- 在「添加项目」里点「连接 GitHub」：在 GitHub 上建一个只读的 GitHub App、装到组织并勾选仓库，回来就能勾选添加（部署到服务器时推荐，步骤见 [docs/DEPLOY.md](docs/DEPLOY.md)）；
+- 或者本机装一个登录过的 [GitHub CLI](https://cli.github.com/)（`gh auth login`）。
 
 ```bash
 npm install
@@ -141,6 +145,7 @@ lib/project.mjs         把三个数据源接到引擎上，调度后台任务�
 lib/repo.mjs            云端副本上的 Git 查询（提交图、提交、差异、对比、PR）
 lib/git.mjs             运行 git：只读、限并发，联网命令单独排队且不弹登录窗口
 lib/people.mjs          把「名字 + 邮箱」归成人，头像来自 GitHub
+lib/github.mjs          连接 GitHub：App 的创建与安装、令牌、已授权的仓库、Webhook 校验；没连时退回本机 gh
 lib/remote.mjs          远程地址的各种写法统一成一个键（用来对上项目）
 lib/auth.mjs            部署到服务器时的飞书门禁（本机不开），见 docs/DEPLOY.md
 web/                    页面（原生 JS 模块，不需要构建）

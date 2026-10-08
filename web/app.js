@@ -457,6 +457,11 @@ listProjects().then((l) => {
 }).catch(() => {});
 startAmbient();
 watchMid();
+// 在 GitHub 上装好 App 回来（/?github=installed）：去掉地址里的参数，打开「添加项目」直接勾仓库
+if (new URLSearchParams(location.search).get('github') === 'installed') {
+  history.replaceState(null, '', location.pathname + location.hash);
+  addProject();
+}
 request('/api/me').then((m) => {
   me = m;
   renderSide();

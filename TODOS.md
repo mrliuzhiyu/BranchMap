@@ -19,5 +19,7 @@
 
 ## 部署
 
-- [ ] 上服务器之前：写 `deploy/`（进程守护、nginx 模板），步骤见 [docs/DEPLOY.md](docs/DEPLOY.md) 第二节。
-  部署后在那份文档的「已部署的环境」表里登记。需要用户先定：哪台机器、什么域名。
+- [ ] **`<部署域名>` 解析改回 `<服务器 IP>`**（用户在阿里云 DNS 操作）：目前指向乌兰察布，那台是公司账号，个人备案的域名会被拦截。
+- [ ] **129 上连接 GitHub**：飞书登录后在「添加项目」里填 `siltok-ai`、点「连接 GitHub」，创建并安装 App、勾选仓库（需要组织 owner）。
+  走通后验收 [issues/open/20261007-github-app-connect.md](issues/open/20261007-github-app-connect.md) 的 AC-5。
+- [ ] **129 的飞书门禁收尾**：第一次飞书登录后从服务日志取 `tenant_key` 填进 `auth.tenantKey`，`auth.admins` 换成管理员的飞书 open_id。

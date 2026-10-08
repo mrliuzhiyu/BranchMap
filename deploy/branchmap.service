@@ -1,0 +1,35 @@
+# BranchMap 的 systemd 服务（服务器部署用，步骤见 docs/DEPLOY.md）
+# 约定的目录：程序 /opt/branchmap/app（git clone），私有 Node 在 /opt/branchmap/node，gh 在 /opt/branchmap/gh（可选），
+# 数据（云端副本、GitHub App 凭据）在 /var/lib/branchmap，机密环境变量在 /etc/branchmap/env（root:branchmap 640）。
+[Unit]
+Description=BranchMap（只读的 Git 可视化）
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=branchmap
+Group=branchmap
+WorkingDirectory=/opt/branchmap/app
+EnvironmentFile=/etc/branchmap/env
+Environment=HOME=/var/lib/branchmap
+Environment=PATH=/opt/branchmap/node/bin:/opt/branchmap/gh/usr/bin:/usr/local/bin:/usr/bin:/bin
+Environment=GH_NO_UPDATE_NOTIFIER=1
+ExecStart=/opt/branchmap/node/bin/node server.mjs --port=4317
+Restart=on-failure
+RestartSec=10
+# 和机器上的其他服务共用资源：设上限，超了只影响 BranchMap 自己
+MemoryHigh=700M
+MemoryMax=900M
+CPUQuota=100%
+Nice=5
+# 只能写自己的目录
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/branchmap/app /var/lib/branchmap
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target
