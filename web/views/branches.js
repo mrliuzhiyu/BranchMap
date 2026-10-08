@@ -141,14 +141,14 @@ export function mount(el, ctx) {
     const devName = store.model.trunk.dev ?? store.model.trunk.prod;
     root.innerHTML = `
       <div class="btools">
-        <div class="fchips">${FILTERS.map((x) => `<button class="chip${f === x.id ? ' on' : ''}${!n[x.id] && x.id !== 'all' ? ' zero' : ''}" data-f="${x.id}" ${x.tip ? `data-tip="${esc(typeof x.tip === 'function' ? x.tip(o) : x.tip)}"` : ''}>${x.label}<span class="n">${n[x.id]}</span></button>`).join('')}</div>
+        <div class="fchips">${FILTERS.filter((x) => x.id !== 'local' || o.localScan !== false).map((x) => `<button class="chip${f === x.id ? ' on' : ''}${!n[x.id] && x.id !== 'all' ? ' zero' : ''}" data-f="${x.id}" ${x.tip ? `data-tip="${esc(typeof x.tip === 'function' ? x.tip(o) : x.tip)}"` : ''}>${x.label}<span class="n">${n[x.id]}</span></button>`).join('')}</div>
         <span class="grow"></span>
         <div class="seg" data-tip="排序"><button data-s="time" aria-pressed="${sort === 'time'}">${icon.clock(12)}</button><button data-s="commits" aria-pressed="${sort === 'commits'}">${icon.commit(12)}</button></div>
         <label class="field sm">${icon.search(12)}<input data-q value="${esc(q)}" placeholder="分支、成员、工单、标签"></label>
       </div>
       ${f === 'clean' ? cleanBar(list) : trunkCard()}
       <div class="bl card${f === 'clean' ? ' picking' : ''}">
-        <div class="bl-h"><span>分支</span><span><i data-col="1"></i>负责人</span><span data-tip="云端 · 本机"><i data-col="2"></i>状态</span><span data-tip="${esc(`提交 / 落后 ${devName}`)}"><i data-col="3"></i>对 ${esc(devName ?? '')}</span><span data-tip="${esc(st.map((s) => s.name).join(' → '))}"><i data-col="4"></i>走到</span><span><i data-col="5"></i>更新</span><span></span></div>
+        <div class="bl-h"><span>分支</span><span><i data-col="1"></i>负责人</span><span data-tip="${o.localScan === false ? '云端' : '云端 · 本机'}"><i data-col="2"></i>状态</span><span data-tip="${esc(`提交 / 落后 ${devName}`)}"><i data-col="3"></i>对 ${esc(devName ?? '')}</span><span data-tip="${esc(st.map((s) => s.name).join(' → '))}"><i data-col="4"></i>走到</span><span><i data-col="5"></i>更新</span><span></span></div>
         ${list.map((r) => {
           const p = r.owner != null ? persons[r.owner] : null;
           const tags = [
@@ -160,7 +160,7 @@ export function mount(el, ctx) {
           return `<div class="bl-r" data-open="${esc(r.name)}" style="--c:${r.color}">
             <span class="bn2">${f === 'clean' ? `<input type="checkbox" data-pick="${esc(r.name)}" ${picks?.has(r.name) ? 'checked' : ''}>` : ''}<i class="dot"></i><span class="nm" data-tip-c="${r.color}" data-tip="${esc(`${r.name}\n${ctx.overview.persons[r.owner]?.name ?? ''}${r.tip?.subject ? `\n最新：${r.tip.subject}` : ''}`)}">${esc(r.name)}</span>${tags}<button class="addtag" data-addtag="${esc(r.name)}" data-tip="加标签">${icon.tag(11)}</button></span>
             <span class="ow">${p ? `${avatar(p, 18)}<span>${esc(p.name)}</span>` : '<span class="faint">—</span>'}</span>
-            <span class="sti">${cloudIcon(r)}${localIcon(r)}</span>
+            <span class="sti">${cloudIcon(r)}${o.localScan === false ? '' : localIcon(r)}</span>
             <span class="ab">${r.own != null ? `<span class="up" data-tip="提交">${icon.arrowUp(9)}${r.own}</span>` : ''}${r.behind != null ? `<span class="${r.behind ? 'down' : 'zero'}" data-tip="${esc(`落后 ${devName}`)}">${icon.arrowDown(9)}${r.behind}</span>` : ''}</span>
             <span>${journey(r, st)}</span>
             <span class="t" data-tip="${fullStamp(r.time)}">${when(r.time)}</span>
@@ -205,7 +205,7 @@ export function mount(el, ctx) {
       <div class="cb1">${icon.archive(16)}<span><b>${merged}</b> 条已合入${list.length - merged ? ` · <b>${list.length - merged}</b> 条停滞` : ''}</span><span class="grow"></span>
         <button class="btn sm" data-pick-all data-tip="全选 / 全不选">${chosen.length === list.length && list.length ? '全不选' : '全选'}</button>
         <button class="btn sm primary" data-copy-cmd="cloud" ${chosen.length ? '' : 'disabled'} data-tip="${esc('git push origin --delete …')}">${icon.copy(12)} 云端命令 ${chosen.length}</button>
-        <button class="btn sm" data-copy-cmd="local" ${local.length ? '' : 'disabled'} data-tip="${esc('git branch -d …')}">${icon.desktop(12)} 本机命令 ${local.length}</button>
+        ${ctx.overview.localScan === false ? '' : `<button class="btn sm" data-copy-cmd="local" ${local.length ? '' : 'disabled'} data-tip="${esc('git branch -d …')}">${icon.desktop(12)} 本机命令 ${local.length}</button>`}
       </div>
       <div class="cb2 muted">复制命令后在终端执行</div>
     </div>`;

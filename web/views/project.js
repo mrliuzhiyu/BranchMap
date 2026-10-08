@@ -748,7 +748,7 @@ export function mount(el, ctx) {
         <span data-tip="未合入主线">${sw('<path d="M2 6H16" stroke="var(--s4)" stroke-width="2"/><circle cx="9" cy="6" r="3.5" fill="var(--s4)"/>')}进行中</span>
         <span data-tip="已合入主线">${sw('<path d="M2 6H16" stroke="var(--s5)" stroke-width="2"/><circle cx="9" cy="6" r="3" fill="var(--s5)"/>')}已合并</span>
         <span data-tip="合并提交">${sw(`<circle cx="9" cy="6" r="4" fill="var(--surface)" stroke="var(--muted)" stroke-width="2"/>`)}合并点</span>
-        <span data-tip="本机未提交">${sw('<circle cx="9" cy="6" r="4" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="2 2"/>')}本机改动</span>
+        ${O.localScan === false ? '' : `<span data-tip="本机未提交">${sw('<circle cx="9" cy="6" r="4" fill="none" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="2 2"/>')}本机改动</span>`}
       </span>`;
       return;
     }

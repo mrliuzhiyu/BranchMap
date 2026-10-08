@@ -329,7 +329,7 @@ export function mount(el, { href, addProject, linkHref }) {
         <div class="pgrid" data-pgrid>${data.projects.map(projectBlock).join('') || `<section class="mod"><div class="quiet pad">没有项目</div></section>`}</div>
         <button class="addpj" data-add-project>${icon.plus(13)}<span>添加项目</span></button>
       </div>
-      <div class="bcol">${local()}${people()}</div>
+      <div class="bcol">${data.localScan === false ? '' : local()}${people()}</div>
       <i class="rz-board"></i>`;
     // 可拖：左右两栏的分界（右栏宽度）、线路图名字那一列的宽度（所有项目共用一个宽度）
     resizer(root.querySelector('.rz-board'), { target: root, prop: '--bw', key: 'board-right', min: 260, max: 640, dir: -1, def: 380, onChange: paintMaps });

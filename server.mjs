@@ -45,6 +45,7 @@ const routes = [
   })],
   // 看板：所有项目要处理的问题、各项目主线与环境、谁在忙、本机没推送的
   ['GET', /^\/api\/board$/, async () => ({
+    localScan: ws.localScan,
     projects: await Promise.all(ws.list().map((p) => p.board())),
   })],
   // 我：本机 Git 的身份 + GitHub 账号的头像（gh 登录了才有），侧栏底部显示
