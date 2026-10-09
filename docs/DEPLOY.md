@@ -21,7 +21,7 @@ BranchMap 有两种跑法，代码是同一份，区别只在 `config.json` 里�
 
 - 飞书门禁：`lib/auth.mjs`；连接 GitHub（GitHub App）：`lib/github.mjs`。
 - 本机 `config.json` 没有 `auth` 段，即本机不开门禁。
-- 进程守护与 nginx 模板：`deploy/branchmap.service`、`deploy/nginx.conf.example`（照 129 上实际在用的整理）。还没有一键部署脚本。
+- 进程守护与 nginx 模板：`deploy/branchmap.service`、`deploy/nginx.conf.example`（照实际在用的服务器整理）。还没有一键部署脚本。
 - 部署之后在下面「三、已部署的环境」登记，没登记的不算现状。
 
 ## 二、部署到服务器要做的事
@@ -64,12 +64,12 @@ BranchMap 有两种跑法，代码是同一份，区别只在 `config.json` 里�
 
 | 机器 | 地址 | 运行的提交 | 部署日期 | 登记人 |
 |---|---|---|---|---|
-| 阿里云 ECS（华北2，个人账号，2 核 3.4G，和 `imoky` 的测试站共用，各自独立的 nginx 站点文件） | `https://<部署域名>` → `<服务器 IP>`（服务只听 `127.0.0.1:4317`） | `fc3a069` | 2026-10-08 | Claude（用户授权） |
+| 一台 2 核 3.4G 的云服务器（和别的站点共用，各自独立的 nginx 站点文件） | 内部域名（不在这里写；服务只听 `127.0.0.1:4317`） | `fc3a069` | 2026-10-08 | Claude（用户授权） |
 
 改了服务器（换机器、换域名、换提交）就同步改这张表，并更新文件头的 `verified`。
 
-129 上的布置：`branchmap` 系统用户；程序 `/opt/branchmap/app`（git clone，`git pull` 更新）、私有 Node 22 与 gh 在 `/opt/branchmap`；
+这台机器上的布置：`branchmap` 系统用户；程序 `/opt/branchmap/app`（git clone，`git pull` 更新）、私有 Node 22 与 gh 在 `/opt/branchmap`；
 数据 `/var/lib/branchmap`（`cache/` 下是云端副本，连上 GitHub App 后有 `github-app.json`）；机密 `/etc/branchmap/env`（root:branchmap 640）；
-systemd `branchmap.service` 与 nginx `/etc/nginx/conf.d/branchmap.conf` 就是 `deploy/` 里的两份（域名换成 `<部署域名>`）；证书 Let's Encrypt，certbot 自动续期。
-那台机器 HTTPS 访问 `github.com` 基本不通，`branchmap` 用户设了 `url."git@github.com:".insteadOf`，拉代码走 SSH（账号级 key `branchmap@<部署域名>`）；
-`api.github.com` 访问稳定，PR / CI / 头像走 GitHub App。同一域名放在公司账号的机器（乌兰察布）上会被备案拦截，2026-10-07 试过，已撤回并清理。
+systemd `branchmap.service` 与 nginx `/etc/nginx/conf.d/branchmap.conf` 就是 `deploy/` 里的两份（域名换成实际的）；证书 Let's Encrypt，certbot 自动续期。
+那台机器 HTTPS 访问 `github.com` 基本不通，`branchmap` 用户设了 `url."git@github.com:".insteadOf`，拉代码走 SSH（服务用户自己的 key）；
+`api.github.com` 访问稳定，PR / CI / 头像走 GitHub App。在中国大陆的云服务器上，域名必须在那台机器所属的云账号下有备案接入，换到别的账号的机器上会被备案拦截。

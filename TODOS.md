@@ -18,6 +18,13 @@
 
 ## 部署
 
-- [ ] **129 上连接 GitHub**：飞书登录后在「添加项目」里填 `siltok-ai`、点「连接 GitHub」，创建并安装 App、勾选仓库（需要组织 owner）。
+- [ ] **服务器上连接 GitHub**：飞书登录后在「添加项目」里填 `siltok-ai`、点「连接 GitHub」，创建并安装 App、勾选仓库（需要组织 owner）。
   走通后验收 [issues/open/20261007-github-app-connect.md](issues/open/20261007-github-app-connect.md) 的 AC-5。
-- [ ] **129 的飞书门禁收尾**：第一次飞书登录后从服务日志取 `tenant_key` 填进 `auth.tenantKey`，`auth.admins` 换成管理员的飞书 open_id。
+- [ ] **服务器的飞书门禁收尾**：第一次飞书登录后从服务日志取 `tenant_key` 填进 `auth.tenantKey`，`auth.admins` 换成管理员的飞书 open_id。
+
+## 开源
+
+- [ ] **许可证**：仓库还没有 LICENSE（用户 2026-10-09 说先不管）。没有许可证时代码公开了别人也不能合法使用；公开前定下（MIT / Apache-2.0 / AGPL-3.0），加 `LICENSE` 并在 `package.json` 写 `license`。
+- [ ] **README 截图**：现成能截的只有公司仓库（提交说明、同事名字），不能用；准备一个演示仓库再截看板、分支图、成员页。
+- [ ] **英文的 CONTRIBUTING / SECURITY**：别人提 PR、报漏洞要看。安全说明至少写清：本机模式没有登录、只听 127.0.0.1；服务器模式靠飞书门禁；「测试探测地址」只有管理员能调（防 SSRF）。
+- [ ] **Git 历史**：用户 2026-10-09 定保留历史；历史里仍有部署服务器的 IP、域名和提交作者邮箱，公开即可见。

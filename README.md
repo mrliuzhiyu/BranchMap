@@ -1,83 +1,82 @@
 # BranchMap
 
-看清每个项目的代码走到了哪一站：谁在做什么，合进 dev 没有，部署到测试 / 生产环境没有，线上跑的是哪个提交，哪里不健康。
+English · [中文](README.zh-CN.md)
 
-它不是 Git 客户端，不提交、不切分支、不改你的仓库。一个仓库一个项目，一个项目一页。
+See where every project's code actually is: who is working on what, whether it has been merged into `dev`, whether it has reached the test / production environments, which commit is running in production, and what looks unhealthy.
 
-## 看什么
+BranchMap is not a Git client: it never commits, switches branches or modifies your repositories. One repository is one project, and each project gets its own page.
+Run it on your own machine (just for you), or deploy it to a server for your team (Feishu/Lark sign-in, GitHub App connection).
 
-- **首页**：所有项目各一行。每行显示健康状况、迷你流水线（`dev ─3→ 测试 → main → 生产`）、在途多少、谁最近在动、最要紧的告警。
-- **流水线**（项目首页）：
-  - **上方**：功能分支 → dev → 测试环境 → main → 生产环境，一站一张卡。
-    - 分支卡：显示最新提交。
-    - 环境卡：显示线上实际运行的提交或版本号。
-    - 站与站之间的数字：还有多少没推进。点一下，下面只列卡在这一段的工作。
-    - 反常的情况标黄：比如生产比测试还新（跳过了测试）、main 上有没回合到 dev 的提交。
-  - **左侧 · 在途工作**：按工单号（如 `SIL-449`）、PR 或分支归组。每件工作前面有一条进度轨道：● 已到、◐ 部分、○ 未到、◌ 读不出。点开看每个提交，再点提交看差异。
-  - **右侧**：健康检查、最近在动的人、本机概况。
-- **成员**：每人一张卡，包括：
-  - 手上在做的工作，每件走到了哪一站
-  - 名下的分支
-  - 近 14 天的节奏
-  - 刚上线的东西
-- **本机**：这台电脑上这个项目的所有工作区和本地分支，列出：
-  - 没推送的提交
-  - 没拉取的更新
-  - 没提交的改动
-  - stash
-- **提交图**：带泳道的完整历史。main、dev 固定在最左两道。各环境正在运行的提交标在图上，本机没提交的改动显示在对应提交上方。
-- **分支与对比**：每条分支相对 dev / main 的领先和落后；标签；任选两个引用对比。
+> The user interface is currently in Chinese. Below, UI labels are given in English with the on-screen Chinese text in parentheses.
 
-数据一变（云端有新提交、环境换了版本、本机改了文件），页面自动刷新。
+## What you see
 
-## 数据从哪来
+- **Board** (看板, the home page): one card per project.
+  - A route map: in-progress branches flow into `dev`; between `dev` and `main` it shows how many commits are waiting to be released (待上线) and how many are on `main` but not back in `dev` (没回合); environments such as test / production sit on their branches.
+  - Issues that need attention (health checks); each one links to the place where you fix it.
+  - On the right: activity of people across projects; when running locally, also "This machine" (本机) — branches not yet pushed and working trees with uncommitted changes.
+- **Branch graph** (分支图): the commit graph of one project.
+  - The full git graph by default; the "trunk" (主线) view shows only the `main` and `dev` lines plus branches not yet merged. `main` is always left of `dev`, each tagged with environment labels such as production / test.
+  - Every branch has its own color, consistent between lists and the graph; merged branches keep their color and are labelled by name. The branch bar on top picks which branches are drawn (all by default).
+  - The detail panel drills down: branch → commit → file diff; environment → pending deployment, what the next release will carry (copyable release checklist), skipped environments, deployment history.
+- **Branches** (分支): every branch in one table — owner, remote / local status, ahead / behind `dev`, which stage it has reached, PR with CI and review status, custom tags.
+  Filters: in progress, merged into dev, merged into main, stale, cleanable, local, mine. "Cleanable" only generates the delete commands; you run them yourself.
+- **People** (成员): a card per person (14-day activity, which stage their work is at, their branches). The detail page shows commits from the last 7 days, how many of the waiting-to-release / not-merged-back commits are theirs, each piece of work expanded to commits, and whether each branch has reached `dev` / `main`.
 
-| 数据 | 来源 | 回答什么 |
+Pages refresh automatically when data changes (new commits pushed, an environment switched versions, local files changed).
+
+## Where the data comes from
+
+| Data | Source | Answers |
 |---|---|---|
-| 云端 | BranchMap 自己在 `.cache/mirrors` 里的仓库副本（只有 Git 记录，没有代码文件），每 2 分钟同步一次 | 团队的真实进度：main / dev 现状、每个人推上去的分支 |
-| 环境 | 对配置里的地址发只读 HTTP GET，读出正在运行的提交或版本号，每分钟一次 | 线上跑的到底是哪个提交 |
-| 本机 | 扫描目录里的仓库和它们的所有工作树 | 我推送了没有、拉取了没有 |
+| Remote | BranchMap's own copy of each repository in its cache directory (Git history only, no working files), synced every 2 minutes; synced immediately on push when a GitHub App is connected | The team's real progress: state of `main` / `dev`, everyone's pushed branches |
+| Environments | Read-only HTTP GET to the configured URLs, reading the running commit or version, every minute | Which commit is actually running |
+| Local | Repositories and all their worktrees under the scan directories (local mode only) | Have I pushed / pulled |
+| GitHub | PRs, CI, review status and avatars: a read-only GitHub App, or the local `gh` login | What is in review, did CI pass |
 
-- 第一次建云端副本时，如果本机已经有这个仓库，会先从本机拷一份记录（很快，也不联网），再联网补齐。
-- 同步用你电脑上现有的 Git 登录（凭据管理器、SSH key），私有仓库也能读。没有凭据时直接报错，不会弹登录窗口。
-- 连了 GitHub（「添加项目」里点「连接 GitHub」）之后，读 GitHub 仓库改用 GitHub App 的只读授权：PR、CI、头像走它，有人推送时 GitHub 主动通知，不用等下一次同步。
-- 本机仓库只读：比较「推没推送」用的是云端副本，不会在你的仓库里执行 fetch。
-- 服务只监听 `127.0.0.1`。
+- When a remote copy is first created and the repository already exists locally, history is copied from the local repository first (fast, offline), then completed over the network.
+- Syncing uses your existing Git credentials (credential manager, SSH key), so private repositories work; with a GitHub App connected it uses the app's read-only token. Without credentials it fails immediately instead of prompting.
+- Local repositories are read-only: "pushed or not" is computed against BranchMap's own copy; it never runs `fetch` in your repositories.
+- The server only listens on `127.0.0.1` and checks `Host` / `Origin`.
 
-## 用法
+## Usage
 
-需要 Node 20+ 和 Git。想看 PR、CI 和 GitHub 头像，二选一：
-
-- 在「添加项目」里点「连接 GitHub」：在 GitHub 上建一个只读的 GitHub App、装到组织并勾选仓库，回来就能勾选添加（部署到服务器时推荐，步骤见 [docs/DEPLOY.md](docs/DEPLOY.md)）；
-- 或者本机装一个登录过的 [GitHub CLI](https://cli.github.com/)（`gh auth login`）。
+Requires Node 20+ and Git.
 
 ```bash
 npm install
-cp config.example.json config.json   # 改 scan（放仓库的目录）和各项目的环境
-npm start                             # 启动并打开 http://localhost:4317/
+cp config.example.json config.json   # set scan (where your repositories live) and each project's environments
+npm start                             # start and open http://localhost:4317/
 ```
 
-`npm run serve` 只启动、不开浏览器，也可以在 VS Code 的内置浏览器里打开。
+`npm run serve` starts without opening a browser (VS Code's built-in browser works too).
 
-## 配置（config.json）
+To see PRs, CI and GitHub avatars, either:
 
-什么都不写也能用：只填 `scan`，扫到的仓库按远程地址自动归成项目，dev / main 自动识别。想看环境，给项目加 `environments`。
+- click "Connect GitHub" (连接 GitHub) in "Add project" (添加项目): GitHub opens a pre-filled "create app" page (all permissions read-only); after creating it, pick the organization and repositories, and they appear in "Add project" ready to select;
+- or have a logged-in [GitHub CLI](https://cli.github.com/) on your machine (`gh auth login`).
+
+To deploy it on a server for a team (reverse proxy, Feishu sign-in, GitHub connection, systemd and nginx templates), see [docs/DEPLOY.md](docs/DEPLOY.md) (in Chinese).
+
+## Configuration (config.json)
+
+Works with almost nothing configured: set `scan`, and repositories found there are grouped into projects by remote URL, with `dev` / `main` detected automatically. Add `environments` to a project to track deployments.
 
 ```jsonc
 {
-  "scan": ["C:\\Users\\me\\Projects"],          // 放仓库的目录，下面每个仓库和它的工作树都会被扫到
-  "people": { "Joy": ["Joy Liu", "liuzhiyu"] },  // 同一个人的多个 Git 名字
+  "scan": ["C:\\Users\\me\\Projects"],          // directories to scan; every repository and worktree below is found
+  "people": { "Zhang San": ["Zhang San", "zhangsan"] },  // several Git names of the same person
   "projects": [
     {
-      "remote": "https://github.com/acme/api.git", // 用远程地址对上项目；本机没有这个仓库也行，会直接联网建副本
+      "remote": "https://github.com/acme/api.git", // matches the project by remote URL; works without a local clone
       "name": "API",
-      "group": "服务端",
-      "flow": ["dev", "main"],                    // 主线分支的流向（不写就自动识别）
+      "group": "Backend",
+      "flow": ["dev", "main"],                    // direction of the trunk branches (detected if omitted)
       "environments": [
         {
-          "name": "测试",
-          "branch": "dev",                        // 从哪条分支部署：环境会排在这条分支后面，并和它比较
-          "url": "https://test.example.com",      // 给人点的链接
+          "name": "Test",
+          "branch": "dev",                        // the branch it deploys from: compared against it
+          "url": "https://test.example.com",      // link for people
           "probe": { "url": "https://test.api.example.com/health", "commit": "commit" }
         }
       ]
@@ -86,72 +85,76 @@ npm start                             # 启动并打开 http://localhost:4317/
 }
 ```
 
-**环境怎么读出正在运行的提交**（`probe` + `resolve`）：
+Projects, trunk branches and environments can also be edited in the UI ("Add project", project settings); changes are written back to `config.json`.
 
-| 写法 | 适用 |
+**How an environment's running commit is read** (`probe` + `resolve`):
+
+| Config | When |
 |---|---|
-| `"probe": { "url": "…/health", "commit": "commit" }` | 接口直接返回提交号。字段可以写路径，如 `"build.sha"` |
-| `"probe": { "url": "…/latest", "version": "version" }`，再加 `"resolve": [{ "tag": "app-{version}" }]` | 接口只返回版本号，按云端的标签找到提交 |
-| `"resolve": [{ "manifest": "release/production/{version}/*/*.json", "field": "commit" }]` | 按本机打包留下的清单文件找提交（在这个项目的各个工作区里找） |
-| `"probe": { "url": "https://example.com/" }` | 只检查在线，不读版本 |
+| `"probe": { "url": "…/health", "commit": "commit" }` | The endpoint returns the commit. The field can be a path, e.g. `"build.sha"` |
+| `"probe": { "url": "…/health" }` | No field given: looks for `commit`, `sha`, `gitSha`, `revision` and similar fields in the JSON |
+| `"probe": { "url": "…/latest", "version": "version" }` plus `"resolve": [{ "tag": "app-{version}" }]` | The endpoint returns only a version; the commit is found via tags |
+| `"resolve": [{ "manifest": "release/production/{version}/*/*.json", "field": "commit" }]` | Found via a build manifest left in a local worktree of the project |
 
-- 读不出提交的环境照样显示，状态是「版本未知」。流水线会跳过它，直接比较前后能判断的两站，比如 dev → main。
-- 最稳的做法是让服务的健康接口返回构建时的提交号（构建时写进镜像，接口原样返回）。
+- Environments whose commit cannot be read are still shown, as "version unknown" (版本未知). The pipeline skips them and compares the nearest stages it can judge, e.g. `dev` → `main`.
+- The most reliable setup is a health endpoint that returns the commit the service was built from.
 
-**其他可选项**：
+**Other options**:
 
-| 字段 | 默认 | 说明 |
+| Field | Default | Meaning |
 |---|---|---|
-| `port` | 4317 | 端口 |
-| `syncInterval` | 120 | 云端副本同步间隔（秒） |
-| `probeInterval` | 60 | 环境探测间隔（秒） |
-| `localInterval` | 90 | 本机重扫间隔（秒），切回页面时也会扫一次 |
-| `windowDays` | 21 | 在途工作的时间窗；没上线的不受限 |
-| `health.staleDays` | 30 | 分支多久没动算停滞 |
-| `health.backlogDays` | 7 | 待上线的提交等多久提示积压 |
-| `health.envLagHours` | 24 | 环境落后它的分支多久提示该部署 |
-| `tickets` | 自动 | 工单号：`{ "prefixes": ["SIL"] }` 或 `{ "pattern": "…" }`，`url` 可写 `"https://…/{id}"`。不写时自动识别：同一前缀出现过 3 个以上编号就算工单 |
+| `port` | 4317 | Port |
+| `syncInterval` | 120 | Remote sync interval (seconds) |
+| `probeInterval` | 60 | Environment probe interval (seconds) |
+| `localInterval` | 90 | Local rescan interval (seconds); also rescans when the page regains focus |
+| `windowDays` | 21 | Time window for in-progress work; unreleased work is always included |
+| `health.staleDays` | 30 | Days without activity before a branch counts as stale |
+| `health.backlogDays` | 7 | Days a waiting-to-release commit may wait before it is flagged |
+| `health.envLagHours` | 24 | Hours an environment may lag its branch before it is flagged |
+| `tickets` | auto | Ticket IDs: `{ "prefixes": ["ABC"] }` or `{ "pattern": "…" }`, with optional `"url": "https://…/{id}"`. Auto-detected otherwise: a prefix seen with 3+ numbers counts as a ticket |
+| `auth` | off | Feishu sign-in for server deployments, see [docs/DEPLOY.md](docs/DEPLOY.md) |
 
-## 健康检查
+## Health checks
 
-| 规则 | 级别 |
+| Rule | Level |
 |---|---|
-| 环境连不上 | 严重 |
-| 环境运行的提交不在云端任何分支里（用没推送的代码部署的） | 注意 |
-| 环境落后它的分支，且已经等了超过 `envLagHours` | 注意 |
-| 环境运行的代码里有不在它分支上的提交（从别处部署的） | 注意 |
-| 后一个环境有、前一个环境没有的提交（跳过了测试） | 注意 |
-| main 上有没回合到 dev 的提交 | 注意 |
-| 待上线的提交已经等了超过 `backlogDays` | 注意 |
-| 云端同步失败超过 15 分钟 | 注意 |
-| 环境读不出版本、分支停滞 | 提示 |
+| Remote never synced successfully | critical |
+| Environment offline | critical |
+| Remote sync failing for more than 15 minutes | warning |
+| An environment runs a commit that is on no branch (deployed from unpushed code) | warning |
+| An environment runs commits that are not on its branch (deployed from elsewhere) | warning |
+| The release branch has commits the previous environment never ran; a later environment has commits an earlier one does not (testing skipped) | warning |
+| Not merged back: commits on `main` that are not in `dev` | warning |
+| Waiting-to-release commits older than `backlogDays`; an environment lagging its branch longer than `envLagHours` | warning (info before that) |
+| Environment version unknown, stale branches, a local environment not running | info |
 
-本机的情况（没推送、没提交）不算项目的健康，在「本机」页和侧栏单独看。
+Local state (unpushed, uncommitted) is not part of a project's health; see "This machine" on the board and the "local" filter on the branches page.
 
-## 代码结构
+## Code layout
 
 ```
-server.mjs              HTTP 接口、实时推送（SSE）、静态页面
-lib/config.mjs          读配置
-lib/sources/            三个数据源，互不依赖
-  cloud.mjs               云端副本：建、同步、状态
-  local.mjs               本机扫描：工作区、本地分支、和云端比
-  env.mjs                 环境探测：读提交 / 版本，按标签或清单找提交
-lib/engine/             纯计算，不碰磁盘和网络
-  graph.mjs               提交图（位图可达性）
-  pipeline.mjs            流水线：站、差距、在途工作、分支、成员
-  health.mjs              健康规则（每条一个函数，往 RULES 里加）
-lib/project.mjs         把三个数据源接到引擎上，调度后台任务，数据变了就通知页面
-lib/repo.mjs            云端副本上的 Git 查询（提交图、提交、差异、对比、PR）
-lib/git.mjs             运行 git：只读、限并发，联网命令单独排队且不弹登录窗口
-lib/people.mjs          把「名字 + 邮箱」归成人，头像来自 GitHub
-lib/github.mjs          连接 GitHub：App 的创建与安装、令牌、已授权的仓库、Webhook 校验；没连时退回本机 gh
-lib/remote.mjs          远程地址的各种写法统一成一个键（用来对上项目）
-lib/auth.mjs            部署到服务器时的飞书门禁（本机不开），见 docs/DEPLOY.md
-web/                    页面（原生 JS 模块，不需要构建）
-scripts/check-docs.mjs  文档治理闸（npm run check:docs）
+server.mjs              HTTP API, live updates (SSE), static files, GitHub connection and webhook
+lib/config.mjs          configuration
+lib/sources/            the three data sources, independent of each other
+  cloud.mjs               remote copy: create, sync, status
+  local.mjs               local scan: worktrees, local branches, compared with the remote
+  env.mjs                 environment probes: read commit / version, resolve via tags or manifests
+lib/engine/             pure computation, no disk or network
+  graph.mjs               commit graph (bitmap reachability)
+  pipeline.mjs            pipeline: stages, gaps, in-progress work, branches, people
+  health.mjs              health rules (one function each; add to RULES)
+lib/project.mjs         wires sources into the engine, schedules background jobs, notifies pages on change
+lib/repo.mjs            Git queries on the remote copy (graph, commit, diff, compare, PRs)
+lib/git.mjs             runs git: read-only, limited concurrency, network commands queued and never prompting
+lib/people.mjs          groups "name + email" into people; avatars from GitHub
+lib/github.mjs          GitHub connection: app creation and installation, tokens, authorized repositories, webhook verification; falls back to local gh
+lib/remote.mjs          normalizes the many spellings of a remote URL into one key
+lib/auth.mjs            Feishu sign-in for server deployments (off locally), see docs/DEPLOY.md
+web/                    the pages (plain JS modules, no build step)
+deploy/                 server templates: systemd service, nginx site
+scripts/check-docs.mjs  documentation check (npm run check:docs)
 ```
 
-工程约定（Git、issue、文档治理）见 [AGENTS.md](AGENTS.md)，文档索引见 [docs/README.md](docs/README.md)。
+Engineering conventions (Git, issues, documentation, UI copy) are in [AGENTS.md](AGENTS.md); the documentation index is [docs/README.md](docs/README.md). Both are in Chinese.
 
-加一种数据源（比如 CI 状态、工单系统），就在 `lib/sources/` 加一个模块，在 `project.mjs` 里接上。加一条健康规则，就往 `health.mjs` 的 `RULES` 里加一个函数。
+To add a data source (e.g. a ticket system), add a module under `lib/sources/` and wire it up in `project.mjs`. To add a health rule, add a function to `RULES` in `health.mjs`.
